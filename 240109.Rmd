@@ -103,19 +103,15 @@ source("solver.R")
 source("model.R")
 source("simulation.R")
 
-for (i in 1:100) {
-  out <- simulate_seir(
-    initial_value = state,
-    params = parameters,
-    start = 0,
-    end = 100
-  )
-}
+out <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 100
+)
 
-results <- table(unlist(out$pop$.state))
-results
-
-unlist(tail(out$overview, n=1))
+out$events 
+plot_SEIR(out, parameters, "incidence") + geom_histogram(data=out$events, aes(x=time))
 ```
 
 Sanity check our results:

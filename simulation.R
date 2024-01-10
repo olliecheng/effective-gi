@@ -18,7 +18,9 @@ initialise_simulation <- function(initial_value, parameters, transition_fn) {
   )
   
   return <- c()
-  return$data <- population
+  return$data <- c()
+  return$data$pop <- population
+  return$data$events <- data.frame("infector"=integer(), "infectee"=integer(), "time"=integer())
   return$transitions <- transition_fn
   
   return
@@ -30,40 +32,49 @@ initialise_seir_simulation <- function(initial_value, parameters) {
 
 seir_sim_transitions <- c(
   # infected for the first time, generate forwards and backwards interval
-  S_to_E = function(population, difference, t) {
-    subset = which(population$.state == 1)
+  S_to_E = function(data, difference, t) {
+    subset = which(data$pop$.state == 1)
     subset_sample = sample_vec(subset, difference, replace=FALSE)
     
     stopifnot(nrow(subset_sample) == difference)
     
-    population[subset_sample, ][,2] <- t
-    population[subset_sample, ]$.state <- 2
+    data$pop[subset_sample, ][,2] <- t
+    data$pop[subset_sample, ]$.state <- 2
     
-    population
+    # generate event information
+    infectors <- sample_vec(
+      which(data$pop$.state == 3),
+      difference,
+      replace=TRUE
+    )
+    events <- data.frame(infector = infectors, infectee = subset_sample, time = t)
+    data$events <- rbind(data$events, events)
+    
+    data
   },
   
-  E_to_I = function(population, difference, t) {
-    subset = which(population$.state == 2)
+  E_to_I = function(data, difference, t) {
+    subset = which(data$pop$.state == 2)
     subset_sample = sample_vec(subset, difference, replace=FALSE)
     
     stopifnot(nrow(subset_sample) == difference)
     
-    population[subset_sample, ][,3] <- t
-    population[subset_sample, ]$.state <- 3
+    data$pop[subset_sample, ][,3] <- t
+    data$pop[subset_sample, ]$.state <- 3
     
-    population
+    data
   },
   
-  I_to_R = function(population, difference, t) {
-    subset = which(population$.state == 3)
-    subset_sample = sample_vec(subset, difference)
+  I_to_R = function(data, difference, t) {
+    subset = which(data$pop$.state == 3)
+    subset_sample = sample_vec(subset, difference, replace=FALSE)
     
     stopifnot(nrow(subset_sample) == difference)
     
-    population[subset_sample, ][,4] <- t
-    population[subset_sample, ]$.state <- 4
+    data$pop[subset_sample, ][,4] <- t
+    data$pop[subset_sample, ]$.state <- 4
     
-    population
+    data
   }
 )
 
@@ -71,10 +82,16 @@ get_counts <- function(population) {
   sum(u, na.rm=TRUE)
 }
 
-sample_vec <- function(v, difference, replace=FALSE) {
+sample_vec <- function(v, n, replace=FALSE) {
+  # if there's only one thing to return, return it
   if (length(v) == 1) {
-    return(v)
+    # check that they're not looking for >1 replications,
+    # unless replace is TRUE
+    
+    stopifnot(n == 1 || replace)
+    return(replicate(n, v))
   } else {
-    return(sample(v, difference, replace))
+    # return a random sample
+    return(sample(v, n, replace))
   }
 }

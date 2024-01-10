@@ -31,7 +31,7 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
           )
         }
         
-        results <- sapply(c(1,2,3,4), \(x) sum(simulation$data$.state == x))
+        results <- sapply(c(1,2,3,4), \(x) sum(simulation$data$pop$.state == x))
         
         if(results[[1]] != state[[1]] || results[[2]] != state[[2]] ||
            results[[3]] != state[[3]] || results[[4]] != state[[4]]) {
@@ -60,9 +60,11 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
   rv$overview <- result
   
   if (simulate) {
-    rv$pop <- simulation$data
+    rv$pop <- simulation$data$pop
+    rv$events <- simulation$data$events
   } else {
     rv$pop <- NULL
+    rv$events <- NULL
   }
   
   return(rv)

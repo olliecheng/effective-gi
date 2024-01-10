@@ -16,7 +16,7 @@ calculate_epi_params <- function(params) {
 plot_SEIR <- function(
     data,
     params,
-    style = c("combined", "exploded")
+    style = c("combined", "exploded", "incidence")
 ) {
   epi_params = calculate_epi_params(params)
   
