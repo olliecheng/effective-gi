@@ -102,6 +102,7 @@ plot_SEIR_incidences(out.deterministic, out.stochastic, parameters)
 source("solver.R")
 source("model.R")
 source("simulation.R")
+source("plots.R")
 
 out <- simulate_seir(
   initial_value = state,
@@ -110,8 +111,9 @@ out <- simulate_seir(
   end = 100
 )
 
-out$events 
-plot_SEIR(out, parameters, "incidence") + geom_histogram(data=out$events, aes(x=time))
+# the histogram should exactly match the line plot
+plot_SEIR(out, parameters, "incidence") + 
+      geom_histogram(data=out$events, aes(x=time), binwidth=1, alpha=0.5)
 ```
 
 Sanity check our results:

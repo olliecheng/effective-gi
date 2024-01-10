@@ -72,8 +72,8 @@ plot_SEIR <- function(
   }
   
   else if (style == "incidence") {
-    result <- ggplot(data, aes(x=time, y=incidence)) +
-      geom_line(linewidth = 0.8) +
+    result <- ggplot() +
+      geom_line(data=data, aes(x=time, y=incidence), linewidth = 0.8) +
       labs(x = "day (t)", y = "incidence", title = title)
     
     return(result)
