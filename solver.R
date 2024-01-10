@@ -30,19 +30,21 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
             t
           )
         }
+        
+        results <- sapply(c(1,2,3,4), \(x) sum(simulation$data$.state == x))
+        
+        if(results[[1]] != state[[1]] || results[[2]] != state[[2]] ||
+           results[[3]] != state[[3]] || results[[4]] != state[[4]]) {
+          print(i)
+          print(difference)
+          
+          print("IMBALANCE")
+          
+          print(results)
+          print(state)
+          flkasdfldsakjfads
+        }
       }
-    }
-    
-    results <- sapply(c(1,2,3,4), \(x) sum(simulation$data$.state == x))
-    ##print("new:")
-    #print(difference)
-    #print(results)
-    #print(state)
-    if(results[[1]] != state[[1]] || results[[2]] != state[[2]] ||
-       results[[3]] != state[[3]] || results[[4]] != state[[4]]) {
-      print("IMBALANCE")
-      print(results)
-      print(state)
     }
     
     # add result to list

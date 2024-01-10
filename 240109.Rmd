@@ -103,12 +103,14 @@ source("solver.R")
 source("model.R")
 source("simulation.R")
 
-out <- simulate_seir(
-  initial_value = state,
-  params = parameters,
-  start = 0,
-  end = 100
-)
+for (i in 1:100) {
+  out <- simulate_seir(
+    initial_value = state,
+    params = parameters,
+    start = 0,
+    end = 100
+  )
+}
 
 results <- table(unlist(out$pop$.state))
 results

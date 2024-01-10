@@ -32,7 +32,7 @@ seir_sim_transitions <- c(
   # infected for the first time, generate forwards and backwards interval
   S_to_E = function(population, difference, t) {
     subset = which(population$.state == 1)
-    subset_sample = sample(subset, difference, replace=FALSE)
+    subset_sample = sample_vec(subset, difference, replace=FALSE)
     
     stopifnot(nrow(subset_sample) == difference)
     
@@ -41,9 +41,10 @@ seir_sim_transitions <- c(
     
     population
   },
+  
   E_to_I = function(population, difference, t) {
     subset = which(population$.state == 2)
-    subset_sample = sample(subset, difference, replace=FALSE)
+    subset_sample = sample_vec(subset, difference, replace=FALSE)
     
     stopifnot(nrow(subset_sample) == difference)
     
@@ -52,9 +53,10 @@ seir_sim_transitions <- c(
     
     population
   },
+  
   I_to_R = function(population, difference, t) {
     subset = which(population$.state == 3)
-    subset_sample = sample(subset, difference, replace=FALSE)
+    subset_sample = sample_vec(subset, difference)
     
     stopifnot(nrow(subset_sample) == difference)
     
@@ -67,4 +69,12 @@ seir_sim_transitions <- c(
 
 get_counts <- function(population) {
   sum(u, na.rm=TRUE)
+}
+
+sample_vec <- function(v, difference, replace=FALSE) {
+  if (length(v) == 1) {
+    return(v)
+  } else {
+    return(sample(v, difference, replace))
+  }
 }
