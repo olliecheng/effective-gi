@@ -1,0 +1,289 @@
+---
+title: "SEIR modelling"
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-01-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(deSolve)
+library(tidyr)
+library(gridExtra)
+library(grid)
+```
+
+## SEIR Model modelled in R
+
+### Equations
+
+The SEIR model arises from the following assumptions: $$
+\begin{equation}
+  S(t) + E(t) + I(t) + R(t) = N\quad  \forall t \\
+  S \xrightarrow{\text{exposure rate }\beta} E \xrightarrow{\text{infection rate }\sigma} I \xrightarrow{\text{removal rate }\gamma}R
+\end{equation}
+$$ Consequently, the following differential equations arise: $$
+\begin{align}
+  \frac{dS}{dt} &= -S(t)\cdot\beta \frac{I(t)}{N}=-\frac{\beta}{N}S(t)I(t) \\
+  \frac{dR}{dt} &= \gamma I(t) \\
+  \frac{dI}{dt} &= \sigma E(t) - \frac{dR}{dt} = -\gamma I(t) + \sigma E(t) \\
+  \frac{dE}{dt} &= -\frac{dS}{dt} - \sigma E(t) = \frac{\beta}{N}S(t)I(t)-\sigma E(t)
+\end{align}
+$$ or, in order,
+
+$$
+\begin{align}
+  \frac{dS}{dt} &= -\frac{\beta}{N}S(t)I(t) \\
+  \frac{dE}{dt} &= \frac{\beta}{N}S(t)I(t)-\sigma E(t) \\
+  \frac{dI}{dt} &= -\gamma I(t) + \sigma E(t) \\
+  \frac{dR}{dt} &= \gamma I(t)
+\end{align}
+$$
+
+#### Finding the parameters for COVID-19 from the literature {#discovery}
+
+To use real-world parameters for testing, I did a brief literature search for SEIR model parameters calculated for the COVID-19 pandemic. I chose to use data from [*He et al.* (2020)](https://link.springer.com/article/10.1007/s11071-020-05743-y), tracking COVID-19 statistics for the original outbreak in Hubei province, China.
+
+![Flowchart of the SEIR model proposed by *He et al.*](flowchart-6stage.png){width="600"}
+
+The revised SEIR model used in the paper uses two infectious stages $I_1$ and $I_2$, corresponding to cases treated with and without intervention. For simplicity, I consider only the case where there is no intervention. Hence, I will calculate my SEIR parameters from the data in the paper using:
+
+$$
+\begin{align}
+  \beta &= \beta_1 = 1.0538 \times 10^{-1}\\
+  \sigma &= \theta_1+\theta_2 = 3.6362 \times 10^{-2}\\
+  \gamma &= \gamma_1 = 8.5000 \times 10^{-3}
+\end{align}
+$$
+
+### SEIR solutions
+
+#### Function to plot the SEIR
+
+The below function will plot the SEIR, when given a dataframe and all parameters.
+
+```{r plot}
+
+# Plot the following SEIR curve, when given a dataframe containing timeseries data
+# and the parameters used to simulate the curves.
+plot_SEIR <- function(data, params) {
+  # melt the data to be long, for ggplot2
+  long_data <- pivot_longer(data, cols = c("S", "E", "I", "R"))
+  
+  # format title with parameters
+  title <- sprintf("SEIR model\nwith N = %s, β = %s, σ = %s, γ = %s",
+                   params[["N"]],
+                   params[["beta"]],
+                   params[["sigma"]],
+                   params[["gamma"]]
+                   )
+  
+  result <- ggplot(long_data, aes(x=time, y=value, colour=name)) + 
+    geom_line(linewidth=0.8) +
+    
+    # manually set legend
+    scale_colour_manual(
+      values = c("seagreen3", "black", "red", "deepskyblue3"),
+      breaks=c("S", "E", "I", "R"),
+      name = "Type",
+      labels = c("Susceptible", "Exposed", "Infected", "Removed")
+      ) +
+    
+    # general theming
+    theme(legend.title=element_blank(), legend.position = c(0.88, 0.5)) +
+    labs(x = "Day (t)", y = "Quantity", title = title)
+  
+  result
+}
+```
+
+#### Solving the equations
+
+##### Using a package
+
+Firstly, here is the SEIR model simulated using the `deSolve` package:
+
+```{r deSolve_base}
+# SEIR differential equations in function form for deSolve
+SEIR_deSolve <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <-  -( (beta / N) * S * I )
+    dE <- (beta / N) * S * I - sigma * E
+    dI <- -( gamma * I ) + sigma * E
+    dR <- gamma * I
+    list(c(dS, dE, dI, dR))
+  })
+}
+
+parameters <- c(N = 10000, beta = 0.10538, sigma = 0.036362, gamma = 0.0085000)
+state      <- c(S = 9900, E = 0, I = 100, R = 0)
+times      <- seq(0, 365, by = 0.01)
+
+out.deSolve <- data.frame(ode(y = state, times = times, func = SEIR_deSolve, parms = parameters))
+
+plot_SEIR(out.deSolve, parameters)
+```
+
+##### Custom solver
+
+And here is my own personal attempt at implementing the Euler Method to write a DEs solver:
+
+```{r solver}
+# Function to solve a differential equation by the Euler Method
+# The input function must return dX in the same index position as X in
+# the initial_value vector. All params are passed into the input function.
+solve_de <- function(func, initial_value, params, start, end, dt) {
+  state <- initial_value
+  result <- data.frame(time = start, as.list(initial_value))
+  
+  times = tail(seq(start, end, by = dt), n = -1)
+  for (t in times) {
+    iteration <- func(state, params) |> 
+      sapply(\(x) x * dt) # multiply all elements by dt
+  
+    # apply Euler's Method i.e. X <- X + dX/dt
+    state <- rowSums(cbind(state, iteration))
+    
+    result <- rbind(
+      result,
+      as.list(
+        c(state, c(time = t))
+      )
+    )
+  }
+  
+  result
+}
+```
+
+Which behaves similarly, as can be shown:
+
+```{r customSolve_base}
+# SEIR differential equations in function form for custom solver
+SEIR <- function(state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <-  -( (beta / N) * S * I )
+    dE <- (beta / N) * S * I - sigma * E
+    dI <- -( gamma * I ) + sigma * E
+    dR <- gamma * I
+    c(dS, dE, dI, dR)
+  })
+}
+
+parameters <- c(N = 10000, beta = 0.10538, sigma = 0.036362, gamma = 0.0085000)
+state      <- c(S = 9900, E = 0, I = 100, R = 0)
+
+out.customSolve <- solve_de(
+  SEIR,
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 365,
+  dt = 0.01
+)
+
+plot_SEIR(out.customSolve, parameters)
+```
+
+### Experimentation - trying out different values for β, σ, γ
+
+For all these experiments, we will be using the default parameters established in #discovery.
+
+#### Variations in β
+
+Observation: large values of $\beta$ result in an earlier and higher peak on the `Exposed` curve. For small $\beta$, this has an impact on the quantity and peak of the `Infected` curve. However, for large $\beta$, the value of $\sigma$ is a constraint on the rate at which patients get infected, so the effect of a large $\beta$ on the Infected curve is minimal.
+
+```{r variations_beta}
+# variations on beta to use
+betas  <- c(0.05, 0.08, 0.10, 0.15, 0.25, 0.45, 0.65, 0.85)
+
+# generate multiple parameters with the various beta values
+params <- lapply(
+  betas,
+  \(x) c(N = 10000, beta = x, sigma = 0.036362, gamma = 0.0085000)
+)
+
+# set initial state
+state <- c(S = 9900, E = 0, I = 100, R = 0)
+
+plots <- lapply(
+  params,
+  function(p) {
+    plot_SEIR(
+      solve_de(SEIR, initial_value = state, params = p, start = 0, end = 365, dt = 0.01),
+      params = p
+    )
+  }
+)
+```
+
+```{r fig.height=18, fig.width=10}
+do.call("grid.arrange", c(plots, nrow = 4))
+```
+
+#### Variations in σ
+
+Observation: large values of $\sigma$ result in an smaller and earlier higher peak on the `Exposed` curve, as patients are quickly transitioning from exposure to infection.
+
+```{r variations_sigma}
+# variations on sigma to use
+sigmas  <- c(0.01, 0.02, 0.03, 0.04, 0.1, 0.3, 0.5, 0.8)
+
+# generate multiple parameters with the various sigma values
+params <- lapply(
+  sigmas, 
+  \(x) c(N = 10000, beta = 0.10538, sigma = x, gamma = 0.0085000)
+)
+
+# set initial state
+state <- c(S = 9900, E = 0, I = 100, R = 0)
+
+plots <- lapply(
+  params,
+  function(p) {
+    plot_SEIR(
+      solve_de(SEIR, initial_value = state, params = p, start = 0, end = 365, dt = 0.01),
+      params = p
+    )
+  }
+)
+```
+
+```{r fig.height=18, fig.width=10}
+do.call("grid.arrange", c(plots, nrow = 4))
+```
+
+#### Variations in γ
+
+Observation: large values of $\gamma$ result in an smaller and earlier higher peak on the `Infected` curve, and for large enough $\gamma$ the infection dies out by itself. Around $\gamma = 0.012$, there seems to be a significant in the behaviour of the curve, which I would like to investigate further.
+
+```{r variations_gamma}
+# variations on gamma to use
+gammas  <- c(0.002, 0.008, 0.014, 0.05, 0.07, 0.09, 0.012, 0.02, 0.03, 0.04, 0.06, 0.3)
+
+# generate multiple parameters with the various sigma values
+params <- lapply(
+  gammas, 
+  \(x) c(N = 10000, beta = 0.10538, sigma = 0.036362, gamma = x)
+)
+
+# set initial state
+state  <- c(S = 9900, E = 0, I = 100, R = 0)
+
+plots <- lapply(
+  params,
+  function(p) {
+    plot_SEIR(
+      solve_de(SEIR, initial_value = state, params = p, start = 0, end = 365, dt = 0.01),
+      params = p
+    )
+  }
+)
+```
+
+```{r fig.height=18, fig.width=10}
+do.call("grid.arrange", c(plots, nrow = 6))
+```

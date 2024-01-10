@@ -1,0 +1,133 @@
+---
+title: "SEIR modelling"
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-01-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("ggplot2")
+
+source('plots.R')
+source('model.R')
+```
+
+## Modelling COVID-19 using a stochastic differential equation
+
+### Equations
+
+The SEIR model arises from the following assumptions:
+
+$$
+\begin{equation}
+  S(t) + E(t) + I(t) + R(t) = N\quad  \forall t \\
+  S \xrightarrow{\text{exposure rate }\beta} E \xrightarrow{\text{infection rate }\sigma} I \xrightarrow{\text{removal rate }\gamma}R
+\end{equation}
+$$
+
+Consequently, we can determine the rate of transition and model this using a Poisson distribution.
+
+$$
+\begin{align}
+  S \rightarrow E &\sim \text{Pois}\left( \frac{\beta}{N}S(t)I(t) \right) \\
+  E \rightarrow I &\sim \text{Pois}\left( \sigma E(t)\right) \\
+  I \rightarrow R &\sim \text{Pois}\left( \gamma I(t)\right)
+\end{align}
+$$
+
+#### Estimating parameters for COVID-19
+
+I approximated the values for $\beta$, $\sigma$ and $\gamma$ using the following:
+
+-   Latent period of 2.5 days
+-   Infectious period of 5.6 days
+-   $R_0$ of 2.68
+
+This resulted in the following parameters: $$
+\begin{align}
+\beta &= 0.47857 \\
+\sigma &= 0.4 \\
+\gamma &= 0.17857
+\end{align}
+$$
+
+### SEIR solutions
+
+#### Solving the equations
+
+```{r covid_default_model}
+
+parameters <- c(N = 10000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
+state      <- c(S = 9990, E = 0, I = 10, R = 0)
+
+out.default_solution <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 100
+)
+
+plot_SEIR(out.default_solution, parameters, style="incidence")
+```
+
+### Generating multiple solutions (and a deterministic one) and comparing
+
+```{r multi-plot}
+out.deterministic <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 100,
+  stochastic = FALSE
+)
+
+out.stochastic <- replicate(100, simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 100,
+  stochastic = TRUE,
+  simulate = FALSE
+), simplify = FALSE)
+
+plot_SEIR_incidences(out.deterministic, out.stochastic, parameters)
+```
+
+### Simulating using a real population
+
+```{r}
+source("solver.R")
+
+out <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 100
+)
+```
+
+Sanity check our results:
+
+```{r}
+results <- table(unlist(out$pop$.state))
+results
+
+unlist(tail(out$overview, n=1))
+```
+
+Generation time statistics:
+
+```{r}
+removed <- out$pop[out$pop$.state == 4, ]
+removed$.gt <- (removed$I - removed$E) + (removed$R - removed$I) / 2
+
+print(summary(removed$.gt))
+```
+
+```{r}
+ggplot(removed, aes(x=.gt)) + geom_histogram(binwidth=1) +
+  geom_vline(aes(xintercept = mean(removed$.gt)), linetype = "dashed", linewidth = 1)
+```
