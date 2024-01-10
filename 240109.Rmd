@@ -61,7 +61,7 @@ $$
 ```{r covid_default_model}
 
 parameters <- c(N = 10000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
-state      <- c(S = 9990, E = 0, I = 10, R = 0)
+state      <- c(S = 9990, E = 10, I = 0, R = 0)
 
 out.default_solution <- simulate_seir(
   initial_value = state,
@@ -100,6 +100,8 @@ plot_SEIR_incidences(out.deterministic, out.stochastic, parameters)
 
 ```{r}
 source("solver.R")
+source("model.R")
+source("simulation.R")
 
 out <- simulate_seir(
   initial_value = state,
@@ -107,6 +109,11 @@ out <- simulate_seir(
   start = 0,
   end = 100
 )
+
+results <- table(unlist(out$pop$.state))
+results
+
+unlist(tail(out$overview, n=1))
 ```
 
 Sanity check our results:

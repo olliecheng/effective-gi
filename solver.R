@@ -1,23 +1,10 @@
-solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, simulate=c(TRUE, FALSE)) {
+solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, simulation=NULL) {
   state <- initial_value
   vars <- length(initial_value)
   
   result <- data.frame(time = start, as.list(initial_value))
   
-  # create a matrix of the population
-  initial <- matrix(0, parameters[["N"]], vars)
-  population <- data.frame(initial)
-  colnames(population) <- names(state) # set column names
-  
-  # give each member a default starting state
-  population$.state <- do.call(
-    c,
-    sapply(
-      seq_along(state),
-      function(v) replicate(state[[v]], v),
-      simplify = FALSE
-    )
-  )
+  simulate <- !is.null(simulation)
   
   times = seq(start + 1, end, by = 1)
   for (t in times) {
@@ -28,9 +15,7 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
       # current state
       difference <- min(c(rng_func(iteration[[i]]), state[[i]]))
       
-      # subtract from the current index
-      # ensure that the state is non-negative; 
-      # it should never be, but this is just to check
+      # subtract from the current state
       state[[i]] <- state[[i]] - difference;
       
       # add to the next state
@@ -38,18 +23,29 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
       
       # update the population
       if (simulate) {
-        if (difference > 0) {
-          subset = which(population$.state == i)
-          subset_sample = sample(subset, difference)
-          
-          stopifnot(nrow(subset_sample) == difference)
-          
-          population[subset_sample, ][,(i+1)] <- t
-          population[subset_sample, ]$.state <- i+1
+        if (difference != 0) {
+          simulation$data <- simulation$transitions[[i]](
+            simulation$data,
+            difference,
+            t
+          )
         }
       }
     }
     
+    results <- sapply(c(1,2,3,4), \(x) sum(simulation$data$.state == x))
+    ##print("new:")
+    #print(difference)
+    #print(results)
+    #print(state)
+    if(results[[1]] != state[[1]] || results[[2]] != state[[2]] ||
+       results[[3]] != state[[3]] || results[[4]] != state[[4]]) {
+      print("IMBALANCE")
+      print(results)
+      print(state)
+    }
+    
+    # add result to list
     result <- rbind(
       result,
       as.list(
@@ -60,8 +56,9 @@ solve_stoch_de <- function(func, rng_func, initial_value, params, start, end, si
   
   rv <- list()
   rv$overview <- result
+  
   if (simulate) {
-    rv$pop <- population
+    rv$pop <- simulation$data
   } else {
     rv$pop <- NULL
   }

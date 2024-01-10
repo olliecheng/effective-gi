@@ -1,4 +1,5 @@
 source("solver.R")
+source("simulation.R")
 
 seir_diff_fn <- function(state, parameters) {
   with(as.list(c(state, parameters)), {
@@ -19,9 +20,17 @@ seir_stoch_diff_fn <- function(state, parameters) {
   })
 }
 
-simulate_seir <- function(initial_value, params, start, end, stochastic = c(TRUE, FALSE), simulate=c(TRUE, FALSE)) {
+simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, simulate=TRUE) {
   # by default, simulate a stochastic model
-  if (missing(stochastic) || stochastic) {
+  if (stochastic) {
+    
+    # create a matrix of the population
+    if (simulate) {
+      sim <- initialise_seir_simulation(initial_value, params)
+    } else {
+      sim <- NULL
+    }
+    
     result <- solve_stoch_de(
         seir_stoch_diff_fn,
         \(x) rpois(1, x), # randomly generate from a Poisson distribution
@@ -29,7 +38,7 @@ simulate_seir <- function(initial_value, params, start, end, stochastic = c(TRUE
         params = parameters,
         start = start,
         end = end,
-        simulate = missing(simulate) || simulate
+        simulation = sim
       )
   } else {
     result <- solve_de(
