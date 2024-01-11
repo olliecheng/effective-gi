@@ -11,8 +11,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library("ggplot2")
 
-source('plots.R')
-source('model.R')
+source("solver.R")
+source("model.R")
+source("simulation.R")
+source("plots.R")
 ```
 
 ## Modelling COVID-19 using a stochastic differential equation
@@ -99,10 +101,8 @@ plot_SEIR_incidences(out.deterministic, out.stochastic, parameters)
 ### Simulating using a real population
 
 ```{r}
-source("solver.R")
-source("model.R")
-source("simulation.R")
-source("plots.R")
+parameters <- c(N = 100000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
+state      <- c(S = 99999, E = 1, I = 0, R = 0)
 
 out <- simulate_seir(
   initial_value = state,
@@ -111,7 +111,10 @@ out <- simulate_seir(
   end = 100
 )
 
-# the histogram should exactly match the line plot
+plot_SEIR(out, parameters, "combined")
+plot_SEIR(out, parameters, "exploded")
+
+# the histogram of events should exactly match the line plot
 plot_SEIR(out, parameters, "incidence") + 
       geom_histogram(data=out$events, aes(x=time), binwidth=1, alpha=0.5)
 ```
@@ -125,16 +128,71 @@ results
 unlist(tail(out$overview, n=1))
 ```
 
-Generation time statistics:
+Calculate the generation time:
 
 ```{r}
-removed <- out$pop[out$pop$.state == 4, ]
-removed$.gt <- (removed$I - removed$E) + (removed$R - removed$I) / 2
+# for each event, find the time when the original infector got infected
+# original infection times
+events <- out$events
 
-print(summary(removed$.gt))
+events$infectee_exposure_time <- out$pop[events$infector, ]$E
+events$gt <- events$time - events$infectee_exposure_time
 ```
 
 ```{r}
-ggplot(removed, aes(x=.gt)) + geom_histogram(binwidth=1) +
-  geom_vline(aes(xintercept = mean(removed$.gt)), linetype = "dashed", linewidth = 1)
+gt.back <- do.call(
+  data.frame,
+  aggregate(
+    gt ~ time, data = events, FUN=function(x) {
+      c(
+        mean = mean(x),
+        q1 = quantile(x, 0.25),
+        q3 = quantile(x, 0.75),
+        median = median(x),
+        sd = sd(x)
+      )
+    }
+  )
+)
+colnames(gt.back) <- c("time", "mean", "q1", "q3", "median", "sd")
+gt.back
+```
+
+And forward generation:
+
+```{r}
+gt.fwd <- do.call(
+  data.frame,
+  aggregate(
+    gt ~ infectee_exposure_time, data = events, FUN=function(x) {
+      c(
+        mean = mean(x),
+        q1 = quantile(x, 0.25),
+        q3 = quantile(x, 0.75),
+        median = median(x),
+        sd = sd(x)
+      )
+    }
+  )
+)
+colnames(gt.fwd) <- c("time", "mean", "q1", "q3", "median", "sd")
+gt.fwd
+```
+
+Graphing the results
+
+```{r}
+ggplot(gt.back, aes(x=time, y=mean)) + 
+  geom_line() + 
+  geom_errorbar(aes(ymin=mean - sd, ymax=mean + sd), width=.2,
+                 position=position_dodge()) +
+  labs(title="mean backwards generation time")
+```
+
+```{r}
+ggplot(gt.fwd, aes(x=time, y=mean)) + 
+  geom_line() + 
+  geom_errorbar(aes(ymin=mean - sd, ymax=mean + sd), width=.2,
+                 position=position_dodge()) +
+  labs(title="mean backwards generation time")
 ```
