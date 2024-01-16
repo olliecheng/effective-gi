@@ -1,0 +1,51 @@
+---
+title: "Simulating forward and backwards generation intervals"
+author: "Oliver Cheng"
+date: "2024-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(deSolve)
+
+source("solver.R")
+source("model.R")
+source("simulation.R")
+source("plots.R")
+```
+
+## R Markdown
+
+```{r}
+parameters <- c(N = 100000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
+state  <- c(S = 99999, E = 1, I = 0, R = 0)
+
+dist <- simulate_seir(state, parameters, 0, 150, stochastic = FALSE)
+
+plot_SEIR(dist, parameters, style="combined")
+plot_SEIR(dist, parameters, style="exploded")
+plot_SEIR(dist, parameters, style="incidence")
+
+ggplot() +
+  xlim(0, 50) +
+  geom_function(fun = dist$F, n = 1000, aes(colour = "F")) +
+  geom_function(fun = dist$L, n = 1000, aes(colour = "L"))
+```
+
+```{r}
+source("calculations.R")
+
+times <- seq(0, 125, by=0.1)
+gt <- data.frame(time = times)
+
+gt$fwd <- sapply(times, \(x) forward_gt(dist, x))
+gt$back <- sapply(times, \(x) backward_gt(dist, x))
+
+ggplot(gt, aes(x=time)) + 
+  geom_line(aes(y=fwd, colour="forward")) + 
+  geom_line(aes(y=back, colour="backward")) +
+  geom_line(data=dist$overview, aes(y = incidence / 1500, colour="incidence (scaled)"), linetype="dashed")
+
+```

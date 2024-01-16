@@ -1,0 +1,133 @@
+---
+title: '240113'
+author: "Oliver Cheng"
+date: "2024-01-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(deSolve)
+
+source("solver.R")
+source("model.R")
+source("simulation.R")
+source("plots.R")
+```
+
+## Introduction
+
+```{r}
+parameters <- c(N = 100000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
+state  <- c(S = 99999, E = 1, I = 0, R = 0)
+int <- 0.01
+```
+
+### Simulate
+
+```{r}
+simulation <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 200
+)
+
+plot_SEIR(simulation, parameters, style="incidence")
+```
+
+```{r}
+initial <- c("L" = 1, "F" = 0)
+
+Individual <- function(t, s, p) {
+  with(as.list(c(s, p)), {
+    dL <-  - p[["sigma"]] * s[["L"]]
+    dF <-  p[["sigma"]] * s[["L"]] - p[["gamma"]] * s[["F"]]
+    list(c(dL, dF))
+  })
+}
+times <- seq(0, 50, by = int)
+
+i <- data.frame(ode(y = initial, times = times, func = Individual, parms = parameters))
+
+ggplot(i, aes(x=time)) +
+  geom_line(aes(y=L, colour="latent")) +
+  geom_line(aes(y=F, colour="infectious")) +
+  labs(title = "L and F over time after an infection",
+       x = "τ",
+       y = "p",
+       colour = "state")
+```
+
+Calculate the basic (intrinsic) generation time distribution
+
+```{r}
+total <- sum(i$F * int)
+i$g_basic <- i$F / total
+
+ggplot(i, aes(x=time, y=g_basic)) + geom_line()
+```
+
+Now, calculate the forward mean GT distribution.
+
+```{r}
+S.approx <- approxfun(simulation$overview$time, simulation$overview$S, yright=0)
+F.approx <- approxfun(i$time, i$F, yright=0)
+
+calc.gt.fwd <- function(s) {
+  numerator <- sum(
+    sapply(
+      seq(0, 50, by=0.1),
+      \(tau) {
+      tau * F.approx(tau) * S.approx(s+tau)
+      }
+    )
+  )
+  denominator <- sum(
+    sapply(
+      seq(0, 50, by=0.1),
+      \(tau) {
+      F.approx(tau) * S.approx(s+tau)
+      }
+    )
+  )
+  numerator / denominator
+}
+
+gt_c <- data.frame(time = seq(1, 200, by=0.1))
+gt_c$fwd <- sapply(gt_c$time, \(x) calc.gt.fwd(x))
+
+ggplot(gt_c, aes(x=time, y=fwd)) + geom_line()
+```
+
+And backwards mean
+
+```{r}
+{r}
+Incidence.approx <- approxfun(simulation$overview$time, simulation$overview$incidence, yright=0, yleft=0)
+
+calc.gt.back <- function(s) {
+  numerator <- sum(
+    sapply(
+      seq(0, 50, by=0.1),
+      \(tau) {
+      tau * F.approx(tau) * Incidence.approx(s-tau)
+      }
+    )
+  )
+  denominator <- sum(
+    sapply(
+      seq(0, 50, by=0.1),
+      \(tau) {
+      F.approx(tau) * Incidence.approx(s-tau)
+      }
+    )
+  )
+  numerator / denominator
+}
+
+gt_c$back <- sapply(gt_c$time, \(x) calc.gt.back(x))
+
+ggplot(gt_c, aes(x=time, y=back)) + geom_line()
+```

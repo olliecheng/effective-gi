@@ -1,13 +1,23 @@
+library(deSolve)
+
 source("solver.R")
 source("simulation.R")
 
-seir_diff_fn <- function(state, parameters) {
-  with(as.list(c(state, parameters)), {
+individual_diff_fn <- function(t, s, p) {
+  with(as.list(c(s, p)), {
+    dL <-  - p[["sigma"]] * s[["L"]]
+    dF <-  p[["sigma"]] * s[["L"]] - p[["gamma"]] * s[["F"]]
+    list(c(dL, dF))
+  })
+}
+
+seir_diff_fn <- function(t, state, parameters) {
+  with(as.list(c(t, state, parameters)), {
     dS <-  -( (beta / N) * S * I )
     dE <- (beta / N) * S * I - sigma * E
     dI <- -( gamma * I ) + sigma * E
     dR <- gamma * I
-    c(dS, dE, dI, dR)
+    list(c(dS, dE, dI, dR))
   })
 }
 
@@ -40,32 +50,49 @@ simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, si
         end = end,
         simulation = sim
       )
-  } else {
-    result <- solve_de(
-      seir_diff_fn,
-      initial_value = state,
-      params = parameters,
-      start = start,
-      end = end,
-      dt = 0.1
-    )
+  } 
+  
+  # use a deterministic model
+  else {
+    result <- list()
+    result$overview <- data.frame(ode(
+      y = state,
+      func = seir_diff_fn,
+      times = seq(start, end, by=0.1),
+      parms = parameters
+    ))
     
-    # https://stackoverflow.com/questions/3476782/check-if-the-number-is-integer
-    is.wholenumber <- function(x, tol = 1e-5) {
-      min(abs(c(x%%1, x%%1-1))) < tol
-    }
-    
-    whole <- sapply(result$overview$time, is.wholenumber)
-    result$overview <- result$overview[whole, ]
+    result$individual <- data.frame(ode(
+      y = c("L" = 1, "F" = 0),
+      times = seq(0, 50, by = int),
+      parms = parameters,
+      func = individual_diff_fn
+    ))
   }
   
   result$overview <- calculate_incidence(result$overview)
   
+  # set up approximation functions for S, E, I, R, incidence
+  result$S <- approxfun(result$overview$time, result$overview$S, yright=0, rule=2)
+  result$E <- approxfun(result$overview$time, result$overview$E, rule=2)
+  result$I <- approxfun(result$overview$time, result$overview$I, rule=2)
+  result$R <- approxfun(result$overview$time, result$overview$R, rule=2)
+  result$i <- approxfun(result$overview$time, result$overview$incidence, rule=2)
+  
+  result$F <- approxfun(result$individual$time, result$individual$F, yright=0, rule=2)
+  result$L <- approxfun(result$individual$time, result$individual$L, yright=0, rule=2)
+  
   return(result)
 }
 
-
 calculate_incidence <- function(df) {
-  df$incidence <- c(0, sapply(diff(df$S), \(x) -x))
+  df$incidence <- c(
+    0, # starting value
+    sapply(
+      diff(df$S) / diff(df$time),
+      \(x) -x
+    )
+  )
+  
   df
 }

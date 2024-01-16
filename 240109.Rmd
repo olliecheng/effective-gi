@@ -10,6 +10,7 @@ date: "2024-01-08"
 knitr::opts_chunk$set(echo = TRUE)
 
 library("ggplot2")
+library("sdprisk")
 
 source("solver.R")
 source("model.R")
@@ -56,14 +57,12 @@ This resulted in the following parameters: $$
 \end{align}
 $$
 
-### SEIR solutions
-
-#### Solving the equations
+### Solving the equations
 
 ```{r covid_default_model}
 
 parameters <- c(N = 10000, beta = 0.47857, sigma = 0.4, gamma = 0.17857)
-state      <- c(S = 9990, E = 10, I = 0, R = 0)
+state      <- c(S = 9999, E = 1, I = 0, R = 0)
 
 out.default_solution <- simulate_seir(
   initial_value = state,
@@ -108,7 +107,7 @@ out <- simulate_seir(
   initial_value = state,
   params = parameters,
   start = 0,
-  end = 100
+  end = 200
 )
 
 plot_SEIR(out, parameters, "combined")
@@ -119,7 +118,7 @@ plot_SEIR(out, parameters, "incidence") +
       geom_histogram(data=out$events, aes(x=time), binwidth=1, alpha=0.5)
 ```
 
-Sanity check our results:
+#### Sanity check our results to verify things are working properly
 
 ```{r}
 results <- table(unlist(out$pop$.state))
@@ -128,16 +127,42 @@ results
 unlist(tail(out$overview, n=1))
 ```
 
-Calculate the generation time:
+#### Generation time distribution
 
 ```{r}
 # for each event, find the time when the original infector got infected
 # original infection times
 events <- out$events
 
-events$infectee_exposure_time <- out$pop[events$infector, ]$E
-events$gt <- events$time - events$infectee_exposure_time
+events$infector_exposure_time <- out$pop[events$infector, ]$E
+events$gt <- events$time - events$infector_exposure_time
+
+# normalise the generation time frequencies, to graph a histogram
+gt.freq <- data.frame(table(events$gt)) # frequency table
+colnames(gt.freq) <- c("time", "freq")  # fix column names
+gt.freq$time <- as.numeric(gt.freq$time)
+gt.freq$norm <- gt.freq$freq / sum(gt.freq$freq)# normalise
+
+# graph the hypoexponential
+hypoexp <- data.frame(time = seq(1, 60, by=0.1))
+hypoexp$density <- dhypoexp(hypoexp$time, rate=c(parameters[["sigma"]], parameters[["gamma"]]))
+
+# plot
+ggplot() + 
+  geom_line(data=gt.freq, aes(x=time, y=norm, colour="simulation")) +
+  geom_line(data=hypoexp, aes(x=time, y=density, colour="expected")) +
+  #geom_line(data=out, aes(x=time, y=g, colour="de")) +
+  labs(
+    title="generation time frequency",
+    x="generation time",
+    y="proportion",
+    colour="type"
+  )
 ```
+
+#### Forwards and backwards generation time
+
+The backwards GI is also known as the "period GI", and the forwards GI is also known as the "cohort GI"
 
 ```{r}
 gt.back <- do.call(
@@ -149,13 +174,13 @@ gt.back <- do.call(
         q1 = quantile(x, 0.25),
         q3 = quantile(x, 0.75),
         median = median(x),
-        sd = sd(x)
+        sd = sd(x),
+        size = length(x)
       )
     }
   )
 )
-colnames(gt.back) <- c("time", "mean", "q1", "q3", "median", "sd")
-gt.back
+colnames(gt.back) <- c("time", "mean", "q1", "q3", "median", "sd", "size")
 ```
 
 And forward generation:
@@ -164,19 +189,19 @@ And forward generation:
 gt.fwd <- do.call(
   data.frame,
   aggregate(
-    gt ~ infectee_exposure_time, data = events, FUN=function(x) {
+    gt ~ infector_exposure_time, data = events, FUN=function(x) {
       c(
         mean = mean(x),
         q1 = quantile(x, 0.25),
         q3 = quantile(x, 0.75),
         median = median(x),
-        sd = sd(x)
+        sd = sd(x),
+        size = length(x)
       )
     }
   )
 )
-colnames(gt.fwd) <- c("time", "mean", "q1", "q3", "median", "sd")
-gt.fwd
+colnames(gt.fwd) <- c("time", "mean", "q1", "q3", "median", "sd", "size")
 ```
 
 Graphing the results
@@ -184,15 +209,26 @@ Graphing the results
 ```{r}
 ggplot(gt.back, aes(x=time, y=mean)) + 
   geom_line() + 
-  geom_errorbar(aes(ymin=mean - sd, ymax=mean + sd), width=.2,
+  geom_errorbar(aes(ymin=mean - sd, ymax=mean + sd), width=.1,
                  position=position_dodge()) +
+  labs(title="mean backwards generation time")
+
+
+ggplot() + 
+  geom_line(data=gt.back, aes(x=time, y=mean, colour="simulation")) + 
+  geom_line(data=gt_c, aes(x=time, y=back, colour="estimate")) + 
   labs(title="mean backwards generation time")
 ```
 
 ```{r}
 ggplot(gt.fwd, aes(x=time, y=mean)) + 
   geom_line() + 
-  geom_errorbar(aes(ymin=mean - sd, ymax=mean + sd), width=.2,
-                 position=position_dodge()) +
-  labs(title="mean backwards generation time")
+  #geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.1,
+  #               position=position_dodge()) +
+  labs(title="mean forwards generation time")
+
+ggplot() + 
+  geom_line(data=gt_c, aes(x=time, y=fwd, colour="estimate")) +
+  geom_line(data=gt.fwd, aes(x=time, y=mean, colour="simulation")) + 
+  labs(title="mean forwards generation time")
 ```
