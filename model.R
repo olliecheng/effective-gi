@@ -44,7 +44,7 @@ simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, si
     result <- solve_stoch_de(
         seir_stoch_diff_fn,
         \(x) rpois(1, x), # randomly generate from a Poisson distribution
-        initial_value = state,
+        initial_value = initial_value,
         params = parameters,
         start = start,
         end = end,
@@ -56,7 +56,7 @@ simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, si
   else {
     result <- list()
     result$overview <- data.frame(ode(
-      y = state,
+      y = initial_value,
       func = seir_diff_fn,
       times = seq(start, end, by=0.1),
       parms = parameters

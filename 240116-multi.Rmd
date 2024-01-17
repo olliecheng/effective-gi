@@ -1,0 +1,63 @@
+---
+title: "240116-multi"
+author: "Oliver Cheng"
+date: "2024-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+source("plots.R")
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+source("model-multistrain.R")
+
+A_params <- list(N = 100000, beta = 0.47857, sigma = 0.4, gamma = 0.17857, omega = 1/30)
+B_params <- list(beta = 0.47857, sigma = 0.4, gamma = 0.17857, omega = 1/30)
+parameters <- list(A = A_params, B = B_params, N = 100000, x = 0)
+
+state <- c(S.AB = 99998,  # susceptible to both strains A and B
+           S.A  = 0,      # susceptible to A, immune to B
+           S.B  = 0,      # susceptible to B, immune to A
+           
+           E.A1 = 1,      # exposed to A, sus. B
+           E.B1 = 1,      # exposed to B, sus. A
+           
+           E.A2 = 0,      # exposed to A, imm. B
+           E.B2 = 0,      # exposed to B, imm. A
+           
+           I.A1 = 0,      # infectious for A, sus. B
+           I.B1 = 0,      # infectious for B, sus. A
+           
+           I.A2 = 0,      # infectious for A, imm. B
+           I.B2 = 0,      # infectious for B, imm. A
+           
+           R.A  = 0,      # removed from A, temporarily immune to B
+           R.B  = 0,      # removed from B, temporarily immune to A
+           R.AB = 0      # removed from both A and B
+           )
+
+r <- simulate_two_seir(state, parameters, 0, 300, stochastic = FALSE)
+# View(r$data)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+source("plots.R")
+# ggplot(r$data, aes(x=time, y=S.A2)) + geom_line()
+plot_SEIR(r$strains$A, parameters[[1]], "combined")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
