@@ -85,7 +85,7 @@ simulate_two_seir <- function(initial_value, params, start, end) {
 }
 
 calculate_incidence <- function(df) {
-  df$incidence <- c(
+  df$i <- c(
     0, # starting value
     sapply(
       diff(df$S) / diff(df$time),
@@ -103,23 +103,23 @@ generate_summary <- function(data, params) {
   result$params <- params
   result$events <- params$events
   
-  A_data <- data.frame(
+  A_data <- calculate_incidence(data.frame(
     time = data$time,
     S = data$S.AB + data$S.A,
     E = data$E.A1 + data$E.A2,
     I = data$I.A1 + data$I.A2,
     R = data$R.A + data$S.B + data$E.B2 + data$I.B2 + data$R.AB,
     strain = "A"
-  )
+  ))
   
-  B_data <- data.frame(
+  B_data <- calculate_incidence(data.frame(
     time = data$time,
     S = data$S.AB + data$S.B,
     E = data$E.B1 + data$E.B2,
     I = data$I.B1 + data$I.B2,
     R = data$R.B + data$S.A + data$E.A2 + data$I.A2 + data$R.AB,
     strain = "B"
-  )
+  ))
   
   overview <- rbind(A_data, B_data)
   
@@ -127,8 +127,14 @@ generate_summary <- function(data, params) {
   
   for (s in c("A", "B")) {
     strain <- list()
-    strain$overview <- calculate_incidence(overview[overview$strain == s,])
-    strain$params <- \(t) c(params$A(t), events=params$events, N=params$N)
+    strain$overview <- overview[overview$strain == s,]
+    
+    # I create an anonymous function which returns an anonymous function
+    # but I call it with s, which captures the current value of s.
+    strain$params <- (function(s) {
+      \(t) c(params[[s]](t), events=params$events, N=params$N)
+    })(s)
+    
     strain <- generate_approximations(strain)
     
     strains[[s]] = strain
@@ -149,14 +155,13 @@ generate_approximations <- function(data) {
   ))
   
   # set up approximation functions for S, E, I, R, incidence
-  data$S <- approxfun(data$overview$time, data$overview$S, rule=2)
-  data$E <- approxfun(data$overview$time, data$overview$E, rule=2)
-  data$I <- approxfun(data$overview$time, data$overview$I, rule=2)
-  data$R <- approxfun(data$overview$time, data$overview$R, rule=2)
-  data$i <- approxfun(data$overview$time, data$overview$incidence, rule=2)
+  for (v in c("S", "E", "I", "R", "i")) {
+    data[[v]] <- approxfun(data$overview$time, data$overview[[v]], rule=2)
+  }
   
-  data$F <- approxfun(data$individual$time, data$individual$F, yright=0, rule=2)
-  data$L <- approxfun(data$individual$time, data$individual$L, yright=0, rule=2)
+  for (v in c("F", "L")) {
+    data[[v]] <- approxfun(data$individual$time, data$overview[[v]], rule=2)
+  }
   
   return(data)
 }
