@@ -3,20 +3,22 @@ library(deSolve)
 source("solver.R")
 source("simulation.R")
 
-eventfun <- function(t, y, parms){
-  with(as.list(y), {
-    y[y < 1e-6] <- 0
-    return(y)
+individual_diff_fn <- function(t, s, p) {
+  with(as.list(c(s, p)), {
+    p <- p(t)
+    
+    dL <-  - p[["sigma"]] * s[["L"]]
+    dF <-  p[["sigma"]] * s[["L"]] - p[["gamma"]] * s[["F"]]
+    list(c(dL, dF))
   })
 }
 
 seir_2_diff_fn <- function(t, state, parameters) {
   with(as.list(c(t, state, parameters)), {
-    # format:
-    # <strain> . <stage> . <start_state> . <end_state>
+    A <- A(t)
+    B <- B(t)
     
-    states = c("S.AB", "S.A", "S.B", "E.A1", "E.B1", "E.A2", "E.B2",
-               "I.A1", "I.B1", "I.A2", "I.B2", "R.A", "R.B", "R.AB")
+    states = names(state)
     
     # matrix of all the transitions, from x to y is accessed by t[x, y]
     t <- matrix(nrow = 14, ncol = 14, dimnames=list(from=states, to=states))
@@ -62,77 +64,23 @@ seir_2_diff_fn <- function(t, state, parameters) {
   })
 }
 
-simulate_two_seir <- function(initial_value, params, start, end, stochastic=TRUE, simulate=TRUE) {
-  # by default, simulate a stochastic model
-  if (stochastic) {
-  }
-  
+simulate_two_seir <- function(initial_value, params, start, end) {
   # use a deterministic model
-  else {
-    result <- list()
-    data <- data.frame(ode(
-      y = initial_value,
-      func = seir_2_diff_fn,
-      times = seq(start, end, by=1),
-      parms = parameters,
-      #method = "euler",
-      #atol = 1e-2,
-      #events = list(func = eventfun, time = start:end)
-    ))
-    result$data <- data
-    
-    result$overview <- data.frame(
-      time = data$time,
-      S.A = data$S.AB + data$S.A,
-      S.B = data$S.AB + data$S.B,
-      E.A = data$E.A1 + data$E.A2,
-      E.B = data$E.B1 + data$E.B2,
-      I.A = data$I.A1 + data$I.A2,
-      I.B = data$I.B1 + data$I.B2,
-      R = data$R.AB
-    )
-    
-    result$strains <- list()
-    result$strains$A <- list()
-    result$strains$A$overview <- data.frame(
-      time = data$time,
-      S = data$S.AB + data$S.A,
-      E = data$E.A1 + data$E.A2,
-      I = data$I.A1 + data$I.A2,
-      R = data$R.A + data$S.B + data$E.B2 + data$I.B2 + data$R.AB
-    )
-    
-    result$strains$B <- list()
-    result$strains$B$overview <- data.frame(
-      time = data$time,
-      S = data$S.AB + data$S.B,
-      E = data$E.B1 + data$E.B2,
-      I = data$I.B1 + data$I.B2,
-      R = data$R.B + data$S.A + data$E.A2 + data$I.A2 + data$R.AB
-    )
-    
-    return(result)
-    
-    result$individual <- data.frame(ode(
-      y = c("L" = 1, "F" = 0),
-      times = seq(0, 50, by = int),
-      parms = parameters,
-      func = individual_diff_fn
-    ))
+  data <- data.frame(ode(
+    y = initial_value,
+    func = seir_2_diff_fn,
+    times = seq(start, end, by=1),
+    parms = parameters,
+    events = list(data = params$events)
+  ))
+  
+  if (is.null(params$events) || nrow(params$events) == 0) {
+    # empty - add names just to prevent issues
+    params$events <- data.frame(matrix(ncol = 4, nrow = 0))
+    colnames(params$events) <- c("var", "time", "value", "method")
   }
   
-  result$overview <- calculate_incidence(result$overview)
-  
-  # set up approximation functions for S, E, I, R, incidence
-  result$S <- approxfun(result$overview$time, result$overview$S, yright=0, rule=2)
-  result$E <- approxfun(result$overview$time, result$overview$E, rule=2)
-  result$I <- approxfun(result$overview$time, result$overview$I, rule=2)
-  result$R <- approxfun(result$overview$time, result$overview$R, rule=2)
-  result$i <- approxfun(result$overview$time, result$overview$incidence, rule=2)
-  
-  result$F <- approxfun(result$individual$time, result$individual$F, yright=0, rule=2)
-  result$L <- approxfun(result$individual$time, result$individual$L, yright=0, rule=2)
-  
+  result <- generate_summary(data, params)
   return(result)
 }
 
@@ -146,4 +94,69 @@ calculate_incidence <- function(df) {
   )
   
   df
+}
+
+generate_summary <- function(data, params) {
+  result <- list()
+  
+  result$data <- data
+  result$params <- params
+  result$events <- params$events
+  
+  A_data <- data.frame(
+    time = data$time,
+    S = data$S.AB + data$S.A,
+    E = data$E.A1 + data$E.A2,
+    I = data$I.A1 + data$I.A2,
+    R = data$R.A + data$S.B + data$E.B2 + data$I.B2 + data$R.AB,
+    strain = "A"
+  )
+  
+  B_data <- data.frame(
+    time = data$time,
+    S = data$S.AB + data$S.B,
+    E = data$E.B1 + data$E.B2,
+    I = data$I.B1 + data$I.B2,
+    R = data$R.B + data$S.A + data$E.A2 + data$I.A2 + data$R.AB,
+    strain = "B"
+  )
+  
+  overview <- rbind(A_data, B_data)
+  
+  strains <- list()
+  
+  for (s in c("A", "B")) {
+    strain <- list()
+    strain$overview <- calculate_incidence(overview[overview$strain == s,])
+    strain$params <- \(t) c(params$A(t), events=params$events, N=params$N)
+    strain <- generate_approximations(strain)
+    
+    strains[[s]] = strain
+  }
+  
+  result$overview <- overview
+  result$strains <- strains
+  
+  return(result)
+}
+
+generate_approximations <- function(data) {
+  data$individual <- data.frame(ode(
+    y = c("L" = 1, "F" = 0),
+    times = seq(0, 100, by = 0.1),
+    parms = data$params,
+    func = individual_diff_fn
+  ))
+  
+  # set up approximation functions for S, E, I, R, incidence
+  data$S <- approxfun(data$overview$time, data$overview$S, rule=2)
+  data$E <- approxfun(data$overview$time, data$overview$E, rule=2)
+  data$I <- approxfun(data$overview$time, data$overview$I, rule=2)
+  data$R <- approxfun(data$overview$time, data$overview$R, rule=2)
+  data$i <- approxfun(data$overview$time, data$overview$incidence, rule=2)
+  
+  data$F <- approxfun(data$individual$time, data$individual$F, yright=0, rule=2)
+  data$L <- approxfun(data$individual$time, data$individual$L, yright=0, rule=2)
+  
+  return(data)
 }

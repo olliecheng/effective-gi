@@ -71,6 +71,8 @@ simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, si
   }
   
   result$overview <- calculate_incidence(result$overview)
+  result$params <- params
+  result$events <- data.frame()
   
   # set up approximation functions for S, E, I, R, incidence
   result$S <- approxfun(result$overview$time, result$overview$S, yright=0, rule=2)

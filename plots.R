@@ -13,19 +13,23 @@ calculate_epi_params <- function(params) {
   )
 }
 
+strain_info <- function(params) {
+  return("")
+  
+  epi_params <- calculate_epi_params(params)
+  sprintf("N = %s, R_0 = %#.2f, lat = %#.1f, inf = %#.1f",
+           epi_params[["N"]],
+           epi_params[["R0"]],
+           epi_params[["latent"]],
+           epi_params[["infectious"]]
+  )
+}
+
 plot_SEIR <- function(
     data,
-    params,
     style = c("combined", "exploded", "incidence")
 ) {
-  epi_params = calculate_epi_params(params)
-  
-  title <- sprintf("SEIR model\nwith N = %s, R_0 = %#.2f, lat = %#.1f, inf = %#.1f",
-                   epi_params[["N"]],
-                   epi_params[["R0"]],
-                   epi_params[["latent"]],
-                   epi_params[["infectious"]]
-  )
+  title <- "SEIR model\nwith " + strain_info(data$params)
   
   data <- data$overview
   
@@ -65,7 +69,7 @@ plot_SEIR <- function(
       theme(plot.title = element_text(size=10))
     
     p4 <- ggplot(data, aes(x=time, y=I)) + geom_line(linewidth = 0.8, colour="red") +
-      labs(x = "day (t)", y = "", title = "infected") +
+      labs(x = "day (t)", y = "", title = "infectious") +
       theme(plot.title = element_text(size=10))
     
     grid.arrange(p1, p2, p3, p4, top = textGrob(title, gp=gpar(fontsize=16), x = 0.09, hjust = 0))
@@ -103,4 +107,99 @@ plot_SEIR_incidences <- function(default, additional, parameters) {
     labs(x = "day (t)", y = "incidence", title = title)
   
   result
+}
+
+plot_multiple_SEIR <- function(
+    dist,
+    style = c("combined", "exploded", "incidence")
+) {
+  
+  data <- rbindlist(lapply(dist$strains, \(x) x$overview), idcol="strain")
+  
+  epi_params = calculate_epi_params(data$params)
+  
+  title <- paste(
+    c(
+      "SEIR model with",
+      lapply(
+        names(dist$strains),
+        function(x) {
+          paste(x, ": ", strain_info(dist$strains[[x]]$params), sep="")
+        }
+      )
+    ),
+    collapse = "\n"
+  )
+  
+  if (style == "combined") {
+    # melt the data to be long, for ggplot2
+    long_data <- pivot_longer(data, cols = c("S", "E", "I", "R"))
+    
+    result <- ggplot(long_data, aes(x=time, y=value, colour=name, linetype=strain)) + 
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      geom_line(linewidth=0.8) +
+      
+      # manually set legend
+      scale_colour_manual(
+        values = c("seagreen3", "black", "red", "deepskyblue3"),
+        breaks=c("S", "E", "I", "R"),
+        name = "Type",
+        labels = c("susceptible", "exposed", "infectious", "removed")
+      ) +
+      
+      # general theming
+      theme(legend.title=element_blank(), legend.position = "right") +
+      labs(x = "day (t)", y = "quantity", title = title)
+    
+    return(result)
+  }
+  
+  else if (style == "exploded") {
+    p1 <- ggplot(data, aes(x=time, y=S, linetype=strain)) + 
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      geom_line(linewidth = 0.8, colour="seagreen3") +
+      labs(x = "day (t)", y = "", title = "susceptible") +
+      theme(plot.title = element_text(size=12),
+            legend.title=element_blank(),
+            legend.position = "bottom"
+            )
+    
+    p2 <- ggplot(data, aes(x=time, y=R, linetype=strain)) +
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) + 
+      geom_line(linewidth = 0.8, colour="deepskyblue3") +
+      labs(x = "day (t)", y = "", title = "removed") +
+      theme(plot.title = element_text(size=12),
+            legend.title=element_blank(),
+            legend.position = "bottom"
+      )
+    
+    p3 <- ggplot(data, aes(x=time, y=E, linetype=strain)) + 
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      geom_line(linewidth = 0.8, colour="black") +
+      labs(x = "day (t)", y = "", title = "exposed") +
+      theme(plot.title = element_text(size=12),
+            legend.title=element_blank(),
+            legend.position = "bottom"
+      )
+    
+    p4 <- ggplot(data, aes(x=time, y=I, linetype=strain)) + 
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      geom_line(linewidth = 0.8, colour="red") +
+      labs(x = "day (t)", y = "", title = "infectious") +
+      theme(plot.title = element_text(size=12),
+            legend.title=element_blank(),
+            legend.position = "bottom"
+      )
+    
+    grid.arrange(p1, p2, p3, p4, top = textGrob(title, gp=gpar(fontsize=12), x = 0, hjust = 0))
+  }
+  
+  else if (style == "incidence") {
+    result <- ggplot() +
+      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      geom_line(data=data, aes(x=time, y=incidence, linetype=strain), linewidth = 0.8) +
+      labs(x = "day (t)", y = "incidence", title = title)
+    
+    return(result)
+  }
 }
