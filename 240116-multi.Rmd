@@ -13,7 +13,6 @@ source("plots.R")
 source("calculations.R")
 ```
 
-
 ```{r}
 source("model-multistrain.R")
 
@@ -40,16 +39,17 @@ state <- c(S.AB = 99999,  # susceptible to both strains A and B
 
 events <- data.frame(
              var = c("I.B1"),
-             time = c(60) ,
-             value = c(10),
-             method = c("rep")
+             time = c(70) ,
+             value = c(100),
+             method = c("replace")
           )
 
 A_params <- function(t) {
-  list(beta = 0.47857, sigma = 0.4, gamma = 0.17857, omega = 1/3, label="BA.1")
+  list(beta = 0.17857 * 1.8, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.1")
 }
+
 B_params <- function(t) {
-  list(beta = 0.47857, sigma = 0.4, gamma = 0.17857, omega = 1/3, label="BA.2")
+  list(beta = 0.17857 * 2, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.2")
 }
 
 # with events
@@ -61,24 +61,16 @@ parameters <- list(A = A_params, B = B_params, N = 100000, x = 0.5, events = eve
 r <- simulate_two_seir(state, parameters, 0, 300)
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
 ```{r fig.width=10, fig.height=6}
 source("plots.R")
+plot_multiple_SEIR(r, "exploded")
 
 # ggplot(r$data, aes(x=time, y=S.A2)) + geom_line()
 
-plot_multiple_SEIR(r, "combined")
-plot_multiple_SEIR(r, "exploded")
-plot_multiple_SEIR(r, "incidence")
-
-# plot_SEIR(r$strains$A, "incidence")
-# 
-# plot_SEIR(r$strains$A, "incidence")
-# plot_SEIR(r$strains$B, "combined")
+# plot_multiple_SEIR(r, "combined")
+# plot_multiple_SEIR(r, "incidence")
 ```
+
 ```{r}
 
 times <- seq(0, 100, by=0.1)

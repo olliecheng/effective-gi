@@ -140,6 +140,22 @@ generate_summary <- function(data, params) {
     strains[[s]] = strain
   }
   
+  result$long_data <- pivot_longer(data, cols = c("S.AB", "S.A", "S.B",
+                                                  "E.A1", "E.A2", "I.A1",
+                                                  "I.A2", "I.B1", "I.B2",
+                                                  "R.A", "R.B", "R.AB"))
+  
+  # set strain data as a column
+  result$long_data$strain <- sapply(result$long_data$name, function(x) {
+    if (grepl("AB", x, fixed = TRUE)) {
+      return("AB")
+    } else if (grepl("A", x, fixed = TRUE)) {
+      return("A")
+    } else {
+      return("B")
+    }
+  })
+  
   result$overview <- overview
   result$strains <- strains
   

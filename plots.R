@@ -4,6 +4,8 @@ library(grid)
 library(tidyr)
 library(data.table)
 
+library(ggthemes)
+
 calculate_epi_params <- function(params) {
   c(
     N = params[["N"]],
@@ -18,19 +20,21 @@ strain_info <- function(params) {
 }
 
 plot_SEIR <- function(
-    data,
+    dist,
     style = c("combined", "exploded", "incidence")
 ) {
-  title <- "SEIR model\nwith " + strain_info(data$params)
+  theme_set(theme_minimal())
   
-  data <- data$overview
+  data <- dist$overview
   
   if (style == "combined") {
     # melt the data to be long, for ggplot2
     long_data <- pivot_longer(data, cols = c("S", "E", "I", "R"))
     
-    result <- ggplot(long_data, aes(x=time, y=value, colour=name)) + 
+    result <- ggplot(data=long_data, aes(x=time, y=value, colour=name)) + 
       geom_line(linewidth=0.8) +
+      event_markers(dist$events) +
+
       
       # manually set legend
       scale_colour_manual(
@@ -42,7 +46,7 @@ plot_SEIR <- function(
 
       # general theming
       theme(legend.title=element_blank(), legend.position = c(0.88, 0.5)) +
-      labs(x = "day (t)", y = "quantity", title = title)
+      labs(x = "day (t)", y = "quantity")
     
     return(result)
   }
@@ -50,27 +54,32 @@ plot_SEIR <- function(
   else if (style == "exploded") {
     p1 <- ggplot(data, aes(x=time, y=S)) + geom_line(linewidth = 0.8, colour="seagreen3") +
       labs(x = "day (t)", y = "", title = "susceptible") +
+      event_markers(dist$events) +
       theme(plot.title = element_text(size=10))
     
     p2 <- ggplot(data, aes(x=time, y=R)) + geom_line(linewidth = 0.8, colour="deepskyblue3") +
       labs(x = "day (t)", y = "", title = "removed") +
+      event_markers(dist$events) +
       theme(plot.title = element_text(size=10))
     
     p3 <- ggplot(data, aes(x=time, y=E)) + geom_line(linewidth = 0.8, colour="black") +
       labs(x = "day (t)", y = "", title = "exposed") +
+      event_markers(dist$events) +
       theme(plot.title = element_text(size=10))
     
     p4 <- ggplot(data, aes(x=time, y=I)) + geom_line(linewidth = 0.8, colour="red") +
       labs(x = "day (t)", y = "", title = "infectious") +
+      event_markers(dist$events) +
       theme(plot.title = element_text(size=10))
     
-    grid.arrange(p1, p2, p3, p4, top = textGrob(title, gp=gpar(fontsize=16), x = 0.09, hjust = 0))
+    grid.arrange(p1, p2, p3, p4)
   }
   
   else if (style == "incidence") {
     result <- ggplot() +
       geom_line(data=data, aes(x=time, y=incidence), linewidth = 0.8) +
-      labs(x = "day (t)", y = "incidence", title = title)
+      event_markers(dist$events) +
+      labs(x = "day (t)", y = "incidence")
     
     return(result)
   }
@@ -128,7 +137,7 @@ plot_multiple_SEIR <- function(
     long_data <- pivot_longer(data, cols = c("S", "E", "I", "R"))
     
     result <- ggplot(long_data, aes(x=time, y=value, colour=name, linetype=strain)) + 
-      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      event_markers(dist$events) +
       geom_line(linewidth=0.8) +
       
       # manually set legend
@@ -149,23 +158,19 @@ plot_multiple_SEIR <- function(
   else if (style == "exploded") {
     plot_options <- list(
       list(
-        var = "S",
-        colour = "seagreen3",
+        cols = c("S.AB", "S.A", "S.B"),
         label = "susceptible"
       ),
       list(
-        var = "R",
-        colour = "deepskyblue3",
+        cols = c("R.AB", "R.A", "R.B"),
         label = "recovered"
       ),
       list(
-        var = "E",
-        colour = "black",
+        cols = c("E.A1", "E.A2", "E.B1", "E.B2"),
         label = "exposed"
       ),
       list(
-        var = "I",
-        colour = "red",
+        cols = c("I.A1", "I.A2", "I.B1", "I.B2"),
         label = "infectious"
       )
     )
@@ -174,10 +179,12 @@ plot_multiple_SEIR <- function(
     
     for (i in seq_along(plot_options)) {
       p <- plot_options[[i]]
+      filtered_data <- dist$long_data[dist$long_data$name %in% p$cols, ]
+      
       plots[[i]] <- 
-        ggplot(data, aes(x = time, y = !!sym(p$var), linetype = strain)) + 
-        geom_vline(data = dist$events, aes(xintercept = time), alpha = 0.5) +
-        geom_line(linewidth = 0.8, colour = p$colour) +
+        ggplot(filtered_data, aes(x = time, y = value, colour = name, linetype=strain)) + 
+        event_markers(dist$events) +
+        geom_line(linewidth = 0.8) +
         labs(x = "day (t)", y = "", title = p$label) +
         theme(plot.title = element_text(size=12),
               legend.title=element_blank(),
@@ -191,10 +198,14 @@ plot_multiple_SEIR <- function(
   
   else if (style == "incidence") {
     result <- ggplot() +
-      geom_vline(data=dist$events, aes(xintercept=time), alpha=0.5) +
+      event_markers(dist$events) +
       geom_line(data=data, aes(x=time, y=i, colour=strain), linewidth = 0.8) +
       labs(x = "day (t)", y = "incidence", title = title)
     
     return(result)
   }
+}
+
+event_markers <- function(events) {
+  geom_vline(data=events, aes(xintercept=time), alpha=0.3, linetype="dashed")
 }

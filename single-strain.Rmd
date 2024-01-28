@@ -1,0 +1,122 @@
+---
+title: 'single-strain'
+author: "Oliver Cheng"
+date: "2024-01-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+FIGURE_PATH <- "/Users/olliecheng/Dropbox (Maestral)/Apps/Overleaf/Modelling/figures/knitr/"
+knitr::opts_chunk$set(fig.path = FIGURE_PATH,  # Save images to a subdirectory
+                      echo = FALSE,  # Hide code for now
+                      dpi = 300,  # High resolution PNGs
+                      dev=c("tikz"),
+                      dev.args = list(lwdUnit = 72.27/96),
+                      fig.width = 5.7,
+                      external = FALSE)
+
+library(deSolve)
+library(tidyr)
+library(patchwork)
+
+source("solver.R")
+source("model.R")
+source("simulation.R")
+source("plots.R")
+```
+
+## Introduction
+
+```{r}
+beta_events <- data.frame(
+  time   = c(0),
+  value  = c(0.47857)
+)
+
+parameters <- list(N = 100000, beta_events = beta_events, sigma = 0.4, gamma = 0.17857)
+state  <- c(S = 99999, E = 1, I = 0, R = 0)
+int <- 0.01
+```
+
+### Simulate
+
+```{r 1s-free-overview, fig.height = 4}
+simulation <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 200
+)
+
+plot_SEIR(simulation, style="combined")
+plot_SEIR(simulation, style="exploded")
+plot_SEIR(simulation, style="incidence")
+```
+
+```{r}
+initial <- c("L" = 1, "F" = 0)
+
+Individual <- function(t, s, p) {
+  with(as.list(c(s, p)), {
+    dL <-  - p[["sigma"]] * s[["L"]]
+    dF <-  p[["sigma"]] * s[["L"]] - p[["gamma"]] * s[["F"]]
+    list(c(dL, dF))
+  })
+}
+times <- seq(0, 200, by = int)
+
+i <- data.frame(ode(y = initial, times = times, func = Individual, parms = parameters))
+```
+
+Calculate the basic (intrinsic) generation time distribution
+
+```{r}
+source("calculations.R")
+
+
+g.0 <- single_intrinsic_gt(simulation)
+g.0.mean <- function(t) {
+  expectation(g.0)
+}
+
+simulation$g.0 <- g.0
+
+gfs <- data.frame(time = seq(0, 200, by = 1))
+gfs$intrinsic <- sapply(gfs$time, g.0.mean)
+
+g.f <- single_forward_gt(simulation)
+g.f.mean <- function(t) {
+  expectation(\(tau) g.f(t, tau))
+}
+
+g.b <- single_backward_gt(simulation)
+g.b.mean <- function(t) {
+  expectation(\(tau) g.b(t, tau))
+}
+
+gfs$forward <- sapply(gfs$time, g.f.mean)
+gfs$backward <- sapply(gfs$time, g.b.mean)
+```
+
+Graph these
+
+```{r 1s-free-gi, fig.height = 4}
+gfs_long <- pivot_longer(gfs, cols = c("intrinsic", "forward", "backward"))
+
+incidence_plot <- ggplot(simulation$overview, aes(x=time, y=incidence)) +
+  geom_line() +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        axis.title.x = element_blank(),
+        panel.grid.minor.y = element_blank()
+  )
+main_plot <- ggplot(gfs_long) +
+  # geom_area(data = simulation$overview, aes(x=time, y = incidence / 300), alpha = 0.2) +
+  geom_line(size=0.9, aes(x=time, y=value, colour=name)) +
+  labs(y = "generation interval (days)") +
+  theme(legend.position = c(0.13, 0.85), legend.title = element_blank())
+
+incidence_plot /
+  main_plot + 
+  plot_layout(heights = c(1, 2))
+```

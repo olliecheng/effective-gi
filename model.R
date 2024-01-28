@@ -13,6 +13,8 @@ individual_diff_fn <- function(t, s, p) {
 
 seir_diff_fn <- function(t, state, parameters) {
   with(as.list(c(t, state, parameters)), {
+    beta <- beta_fn(t)
+    
     dS <-  -( (beta / N) * S * I )
     dE <- (beta / N) * S * I - sigma * E
     dI <- -( gamma * I ) + sigma * E
@@ -21,58 +23,31 @@ seir_diff_fn <- function(t, state, parameters) {
   })
 }
 
-seir_stoch_diff_fn <- function(state, parameters) {
-  with(as.list(c(state, parameters)), {
-    S_to_E <- (beta / N) * S * I
-    E_to_I <- sigma * E
-    I_to_R <- gamma * I
-    c(S_to_E, E_to_I, I_to_R)
-  })
-}
-
-simulate_seir <- function(initial_value, params, start, end, stochastic=TRUE, simulate=TRUE) {
-  # by default, simulate a stochastic model
-  if (stochastic) {
-    
-    # create a matrix of the population
-    if (simulate) {
-      sim <- initialise_seir_simulation(initial_value, params)
-    } else {
-      sim <- NULL
-    }
-    
-    result <- solve_stoch_de(
-        seir_stoch_diff_fn,
-        \(x) rpois(1, x), # randomly generate from a Poisson distribution
-        initial_value = initial_value,
-        params = parameters,
-        start = start,
-        end = end,
-        simulation = sim
-      )
-  } 
+simulate_seir <- function(initial_value, params, start, end) {
+  # turn beta_events into a format recognised by deSolve
+  params$beta_fn <- approxfun(params$beta_events$time, params$beta_events$value, method="constant", rule=2)
   
-  # use a deterministic model
-  else {
-    result <- list()
-    result$overview <- data.frame(ode(
-      y = initial_value,
-      func = seir_diff_fn,
-      times = seq(start, end, by=0.1),
-      parms = parameters
-    ))
-    
-    result$individual <- data.frame(ode(
-      y = c("L" = 1, "F" = 0),
-      times = seq(0, 50, by = int),
-      parms = parameters,
-      func = individual_diff_fn
-    ))
-  }
+  result <- list()
+  result$overview <- data.frame(ode(
+    y = initial_value,
+    func = seir_diff_fn,
+    times = seq(start, end, by=0.1),
+    parms = params,
+  ))
+  
+  result$individual <- data.frame(ode(
+    y = c("L" = 1, "F" = 0),
+    times = seq(0, 50, by = int),
+    parms = parameters,
+    func = individual_diff_fn
+  ))
+  
   
   result$overview <- calculate_incidence(result$overview)
-  result$params <- params
-  result$events <- data.frame()
+  result$params <- parameters
+  
+  result$beta <- params$beta_fn
+  result$events <- tail(params$beta_events, -1) # everything except the first
   
   # set up approximation functions for S, E, I, R, incidence
   result$S <- approxfun(result$overview$time, result$overview$S, yright=0, rule=2)
