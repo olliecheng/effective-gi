@@ -63,7 +63,7 @@ Individual <- function(t, s, p) {
     list(c(dL, dF))
   })
 }
-times <- seq(0, 200, by = int)
+times <- seq(0, 250, by = int)
 
 i <- data.frame(ode(y = initial, times = times, func = Individual, parms = parameters))
 ```
@@ -103,13 +103,20 @@ Graph these
 ```{r 1s-free-gi, fig.height = 4}
 gfs_long <- pivot_longer(gfs, cols = c("intrinsic", "forward", "backward"))
 
-incidence_plot <- ggplot(simulation$overview, aes(x=time, y=incidence)) +
-  geom_line() +
+scale = max(simulation$overview$S) / max(simulation$overview$incidence)
+
+incidence_plot <- ggplot(subset(simulation$overview, time %in% gfs_long$time), aes(x=time, y=incidence)) +
+  geom_line(aes(y=incidence)) +
+  geom_line(aes(y=S / scale), colour="seagreen", linetype="dashed") +
+  scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
   theme(axis.text.x = element_blank(), 
         axis.ticks.x = element_blank(), 
         axis.title.x = element_blank(),
-        panel.grid.minor.y = element_blank()
+        panel.grid.minor.y = element_blank(),
+        axis.text.y.right = element_text(color = "seagreen"),
+        axis.title.y.right = element_text(color = "seagreen")
   )
+
 main_plot <- ggplot(gfs_long) +
   # geom_area(data = simulation$overview, aes(x=time, y = incidence / 300), alpha = 0.2) +
   geom_line(size=0.9, aes(x=time, y=value, colour=name)) +
@@ -119,4 +126,10 @@ main_plot <- ggplot(gfs_long) +
 incidence_plot /
   main_plot + 
   plot_layout(heights = c(1, 2))
+```
+
+```{r}
+plot_SEIR(simulation, style="combined")
+overview <- simulation$overview
+print(overview[overview$time > 150 & overview$time == round(overview$time),])
 ```

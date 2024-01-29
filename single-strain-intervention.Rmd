@@ -50,7 +50,7 @@ simulation <- simulate_seir(
   initial_value = state,
   params = parameters,
   start = 0,
-  end = 150
+  end = 200
 )
 
 plot_SEIR(simulation, style="combined")
@@ -111,13 +111,16 @@ Graph these
 ```{r 1s-intervention-gi, fig.height=4}
 gfs_long <- pivot_longer(gfs, cols = c("intrinsic", "forward", "backward"))
 
-incidence_plot <- ggplot(simulation$overview, aes(x=time, y=incidence)) +
-  geom_line() +
-  event_markers(simulation$events) +
+incidence_plot <- ggplot(subset(simulation$overview, time %in% gfs_long$time), aes(x=time, y=incidence)) +
+  geom_line(aes(y=incidence)) +
+  geom_line(aes(y=S / scale), colour="seagreen", linetype="dashed") +
+  scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
   theme(axis.text.x = element_blank(), 
         axis.ticks.x = element_blank(), 
         axis.title.x = element_blank(),
-        panel.grid.minor = element_blank()
+        panel.grid.minor.y = element_blank(),
+        axis.text.y.right = element_text(color = "seagreen"),
+        axis.title.y.right = element_text(color = "seagreen")
   )
 
 main_plot <- ggplot(gfs_long) +
@@ -130,4 +133,9 @@ main_plot <- ggplot(gfs_long) +
 incidence_plot /
   main_plot + 
   plot_layout(heights = c(1, 2))
+```
+
+```{r}
+overview <- simulation$overview
+print(overview[overview$time > 110 & overview$time == round(overview$time),])
 ```
