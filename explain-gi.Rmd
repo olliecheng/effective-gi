@@ -1,0 +1,199 @@
+---
+title: "explain-gi"
+author: "Oliver Cheng"
+date: "2024-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+FIGURE_PATH <- "/Users/olliecheng/Dropbox (Maestral)/Apps/Overleaf/Modelling/figures/knitr/"
+knitr::opts_chunk$set(fig.path = FIGURE_PATH,  # Save images to a subdirectory
+                      echo = FALSE,  # Hide code for now
+                      dpi = 300,  # High resolution PNGs
+                      dev=c("tikz"),
+                      dev.args = list(lwdUnit = 72.27/96),
+                      fig.width = 5.7,
+                      external = FALSE)
+
+library(deSolve)
+library(tidyr)
+library(patchwork)
+library(RColorBrewer)
+
+source("solver.R")
+source("model.R")
+source("simulation.R")
+source("plots.R")
+source("calculations.R")
+```
+
+## Introduction
+
+```{r}
+beta_events <- data.frame(
+  time   = c(0),
+  value  = c(0.47857)
+)
+
+parameters <- list(N = 100000, beta_events = beta_events, sigma = 0.4, gamma = 0.17857)
+state  <- c(S = 99999, E = 1, I = 0, R = 0)
+int <- 0.01
+
+simulation <- simulate_seir(
+  initial_value = state,
+  params = parameters,
+  start = 0,
+  end = 250
+)
+
+initial <- c("L" = 1, "F" = 0)
+
+Individual <- function(t, s, p) {
+  with(as.list(c(s, p)), {
+    dL <-  - p[["sigma"]] * s[["L"]]
+    dF <-  p[["sigma"]] * s[["L"]] - p[["gamma"]] * s[["F"]]
+    list(c(dL, dF))
+  })
+}
+times <- seq(0, 250, by = int)
+
+i <- data.frame(ode(y = initial, times = times, func = Individual, parms = parameters))
+
+g.0 <- single_intrinsic_gt(simulation)
+g.0.mean <- function(t) {
+  expectation(g.0)
+}
+
+simulation$g.0 <- g.0
+
+gfs <- data.frame(time = seq(0, 150, by = 1))
+gfs$intrinsic <- sapply(gfs$time, g.0.mean)
+
+g.f <- single_forward_gt(simulation)
+g.f.mean <- function(t) {
+  expectation(\(tau) g.f(t, tau))
+}
+
+g.b <- single_backward_gt(simulation)
+g.b.mean <- function(t) {
+  expectation(\(tau) g.b(t, tau))
+}
+
+gfs$forward <- sapply(gfs$time, g.f.mean)
+gfs$backward <- sapply(gfs$time, g.b.mean)
+```
+
+Graph these
+
+```{r}
+sample_pdf <- function(func, time, n) {
+  # Number of simulations
+  accept = NULL
+  accept.count = 0
+  i = 0
+  
+  a = 5
+  b = 20
+  
+  while(accept.count < n){
+    X = runif(1,
+              min=a,
+              max=b)
+    Y = runif(1,
+              min=0,
+              max=0.5)
+    if (Y <= func(time, X)){
+      accept.count = accept.count+1
+      accept[accept.count] = X
+    } 
+  }
+  
+  return(accept)
+}
+
+ggplot(data.frame(x = sample_pdf(g.f, 60, 10)), aes(x=x)) + geom_histogram(binwidth=1)
+```
+
+Find peak location
+
+```{r}
+# peak_time <- simulation$overview[simulation$overview$incidence == max(simulation$overview$incidence), ]$time
+peak_time <- 50
+```
+
+```{r fig.height=8}
+b.start <- peak_time - 20
+b.end <- peak_time + 2
+
+n <- 10
+back_events <- data.frame(start = peak_time - sample_pdf(g.b, peak_time, n), end = peak_time, y = 400 * (1:n))
+back_events
+
+back_incidence <- ggplot(subset(simulation$overview, b.start < time & time < b.end), aes(x=time, y=incidence)) +
+  geom_line() +
+  geom_vline(xintercept=peak_time, colour="maroon") +
+  coord_cartesian(xlim=c(b.start, b.end)) +
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.title.x = element_blank(), axis.text.x = element_blank(), plot.margin = margin(0, 0, 0, 0, "pt"), axis.ticks.length.x = unit(0, "pt"), panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+
+back_top <- ggplot(data=back_events) + 
+  geom_vline(xintercept=peak_time, colour="maroon") +
+  geom_segment(aes(x=end, xend=start + 0.3, y=y, yend=y), arrow = arrow(length = unit(0.04, "npc"))) +
+  geom_point(aes(x=start, y=y), size=2, shape=18) +
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.title.x = element_blank(), axis.text.x = element_blank(), plot.margin = margin(0, 0, 0, 0, "pt"), panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank()) +
+  labs(y = "events") +
+  coord_cartesian(xlim=c(b.start, b.end))
+
+back_dist <- ggplot() +
+  geom_function(fun = \(x) g.b(peak_time, x), xlim=c(0, 20)) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(), plot.margin = margin(20, 0, 0, 0, "pt"), panel.border = element_rect(colour = "black", fill=NA)) +
+  labs(x = "time since infection", y = "distribution")
+
+back <- back_incidence / back_top / back_dist + 
+  plot_layout(heights = c(1.5, 3, 2)) +
+  plot_annotation(
+    title = '    backwards',
+  )
+```
+
+```{r}
+f.start <- peak_time - 2
+f.end <- peak_time + 20
+
+n <- 10
+fwd_events <- data.frame(start = peak_time + sample_pdf(g.f, peak_time, n), end = peak_time, y = 400 * (1:n))
+fwd_events
+
+fwd_incidence <- ggplot(subset(simulation$overview, f.start < time & time < f.end), aes(x=time, y=incidence)) +
+  geom_line() +
+  geom_vline(xintercept=peak_time, colour="maroon") +
+  coord_cartesian(xlim=c(f.start, f.end)) +
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.title.y = element_blank(), axis.title.x = element_blank(), axis.text.x = element_blank(), plot.margin = margin(0, 0, 0, 0, "pt"), axis.ticks.length.x = unit(0, "pt"), panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+
+fwd_top <- ggplot(data=fwd_events) + 
+  geom_vline(xintercept=peak_time, colour="maroon") +
+  geom_segment(aes(x=end, xend=start - 0.3, y=y, yend=y), arrow = arrow(length = unit(0.04, "npc"))) +
+  geom_point(aes(x=start, y=y), size=2, shape=18) +
+  theme_minimal() +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), axis.title.y = element_blank(), axis.title.x = element_blank(), axis.text.x = element_blank(), plot.margin = margin(0, 0, 0, 0, "pt"), panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank()) +
+  labs(y = "events") +
+  coord_cartesian(xlim=c(f.start, f.end))
+
+fwd_dist <- ggplot() +
+  geom_function(fun = \(x) g.f(peak_time, x), xlim=c(0, 20)) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(), axis.title.y = element_blank(), plot.margin = margin(20, 0, 0, 0, "pt"), panel.border = element_rect(colour = "black", fill=NA)) +
+  labs(x = "time since infection", y = "distribution")
+
+fwd <- fwd_incidence / fwd_top / fwd_dist + 
+  plot_layout(heights = c(1.5, 3, 2)) +
+  plot_annotation(
+    title = 'forwards',
+  )
+```
+```{r explain-gi, fig.height=4.5}
+wrap_elements(back) | wrap_elements(fwd)
+```

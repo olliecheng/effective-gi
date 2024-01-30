@@ -209,3 +209,22 @@ plot_multiple_SEIR <- function(
 event_markers <- function(events) {
   geom_vline(data=events, aes(xintercept=time), alpha=0.3, linetype="dashed")
 }
+
+scale_colour_brewer_custom <- function(breaks, colours) {
+  scale_colour_manual(breaks = breaks, values = c(colours, brewer.pal(n = 8, name = "Dark2")))
+}
+
+incidence_susceptible_plot <- function(data, times) {
+  ggplot(subset(data$overview, time %in% times), aes(x=time, y=incidence)) +
+    event_markers(data$events) +
+    geom_line(aes(y=incidence)) +
+    geom_line(aes(y=S / scale), colour="seagreen", linetype="dashed") +
+    scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
+    theme(axis.text.x = element_blank(), 
+          axis.ticks.x = element_blank(), 
+          axis.title.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          axis.text.y.right = element_text(color = "seagreen"),
+          axis.title.y.right = element_text(color = "seagreen")
+    )
+}
