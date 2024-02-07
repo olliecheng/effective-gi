@@ -6,11 +6,21 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+FIGURE_PATH <- "/Users/olliecheng/Dropbox (Maestral)/Apps/Overleaf/Vacation Scholars Poster/figures/knitr/"
+options(tikzDefaultEngine='xetex')
+knitr::opts_chunk$set(fig.path = FIGURE_PATH,  # Save images to a subdirectory
+                      echo = FALSE,  # Hide code for now
+                      dpi = 300,  # High resolution PNGs
+                      dev=c("tikz"),
+                      dev.args = list(lwdUnit = 72.27/96),
+                      fig.width = 5.7,
+                      external = FALSE)
 
 library(ggplot2)
 source("plots.R")
 source("calculations.R")
+library(patchwork)
+library(RColorBrewer)
 ```
 
 ```{r}
@@ -38,32 +48,49 @@ state <- c(S.AB = 99999,  # susceptible to both strains A and B
            )
 
 events <- data.frame(
-             var = c("I.B1"),
-             time = c(70) ,
-             value = c(100),
+             var = c("E.B1"),
+             time = c(80) ,
+             value = c(10),
              method = c("replace")
           )
 
 A_params <- function(t) {
-  list(beta = 0.17857 * 1.8, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.1")
+  list(beta = 0.17857 * 2, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.1")
 }
 
 B_params <- function(t) {
-  list(beta = 0.17857 * 2, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.2")
+  list(beta = 0.17857 * 3.6, sigma = 0.4, gamma = 0.17857, omega = 1/10, label="BA.2")
 }
 
 # with events
 parameters <- list(A = A_params, B = B_params, N = 100000, x = 0.5, events = events)
+x <- parameters$x
 
 # no events
 # parameters <- list(A = A_params, B = B_params, N = 100000, x = 0.5)
 
-r <- simulate_two_seir(state, parameters, 0, 300)
+r <- simulate_two_seir(state, parameters, 0, 400)
 ```
 
-```{r fig.width=10, fig.height=6}
+```{r incidence}
+# View(r$data)
+simulation <- r
+```
+
+```{r}
+source("calculations.R")
+multi_intrinsic_gt(r, "A")(50)
+```
+
+```{r fig.width=5, fig.height=2}
 source("plots.R")
-plot_multiple_SEIR(r, "exploded")
+
+ggplot(r$data, aes(x=time)) +
+  geom_line(aes(y=S.AB + x*S.A, colour="effective S.A")) +
+  geom_line(aes(y=S.AB + x*S.B, colour="effective S.B")) +
+  geom_line(aes(y=S.AB, colour="S.AB"))
+
+# plot_multiple_SEIR(r, "exploded")
 
 # ggplot(r$data, aes(x=time, y=S.A2)) + geom_line()
 
@@ -72,12 +99,125 @@ plot_multiple_SEIR(r, "exploded")
 ```
 
 ```{r}
+source("calculations.R")
+times <- seq(0, 250, by=1)
 
-times <- seq(0, 100, by=0.1)
-gt <- data.frame(time = times)
+g.0.A <- multi_intrinsic_gt(simulation, "A")
+g.0.A.mean <- function(t) {
+  expectation(g.0.A)
+}
 
-gt$A.basic <- basic_mean_gt(r$strains$A)
+g.0.B <- multi_intrinsic_gt(simulation, "B")
+g.0.B.mean <- function(t) {
+  expectation(g.0.B)
+}
 
-gt$A.fwd <- sapply(times, \(x) forward_mean_gt(r$strains$A, x))
-gt$A.back <- sapply(times, \(x) backward_mean_gt(r$strains$A, x))
+simulation$g.0.A <- g.0.A
+simulation$g.0.B <- g.0.B
+
+gfs.A <- data.frame(time = times)
+gfs.A$intrinsic <- sapply(gfs.A$time, g.0.A.mean)
+
+g.f.A <- multi_forward_gt(simulation, "A")
+g.f.A.mean <- function(t) {
+  expectation(\(tau) g.f.A(t, tau))
+}
+
+g.b.A <- multi_backward_gt(simulation, "A")
+g.b.A(191, 3)
+g.b.A.mean <- function(t) {
+  expectation(\(tau) g.b.A(t, tau))
+}
+
+gfs.A$forward <- sapply(gfs.A$time, g.f.A.mean)
+# for (i in gfs.A$time) {
+#   print(i)
+#   # print(g.b.A.mean(i))
+#   print(g.b.A(i, 3))
+# }
+gfs.A$backward <- sapply(gfs.A$time, g.b.A.mean)
+
+gfs.B <- data.frame(time = seq(80, 250, by=1))
+gfs.B$intrinsic <- sapply(gfs.B$time, g.0.B.mean)
+
+g.f.B <- multi_forward_gt(simulation, "B")
+g.f.B.mean <- function(t) {
+  expectation(\(tau) g.f.B(t, tau))
+}
+
+source("calculations.R")
+
+g.b.B <- multi_backward_gt(simulation, "B")
+g.b.B.mean <- function(t) {
+  expectation(\(tau) g.b.B(t, tau))
+}
+
+gfs.B$forward <- sapply(gfs.B$time, g.f.B.mean)
+gfs.B$backward <- sapply(gfs.B$time, g.b.B.mean)
+```
+
+```{r 2-gi, fig.width=5.2, fig.height = 5.6}
+source("plots.R")
+gfs.A_long <- pivot_longer(gfs.A, cols = c("intrinsic", "forward", "backward"))
+gfs.B_long <- pivot_longer(gfs.B, cols = c("intrinsic", "forward", "backward"))
+
+scale = max(simulation$data$S.AB + x * simulation$data$S.A) / max(
+  max(simulation$data$incidence.A1 + simulation$data$incidence.A2),
+  max(simulation$data$incidence.B1 + simulation$data$incidence.B2)
+) * 0.9
+
+# incidence_plot <- incidence_susceptible_plot(simulation, gfs$time)
+incidence_plot <- ggplot(subset(simulation$data, time %in% gfs.A$time), aes(x=time)) +
+  theme_minimal() +
+  event_markers(simulation$events) +
+  geom_line(aes(y=incidence.A1 + incidence.A2, linetype="A"), size=1, colour="#E7298A") +
+  geom_line(aes(y=(S.AB + x *  S.A) / scale, linetype="A"), colour="#7570B3", size=1) +
+  geom_line(aes(y=incidence.B1 + incidence.B2, linetype="B"), size=1, colour="#E7298A") +
+  geom_line(aes(y=(S.AB + x *  S.B) / scale, linetype="B"), colour="#7570B3", size=1) +
+  scale_linetype_manual(breaks = c("A", "B"), values = c("solid", "88"), labels=c("\\parbox{0.6cm}{A}", "B")) +
+  scale_x_continuous(expand = c(0.02, 0)) +
+  scale_x_continuous(expand = c(0.02, 0)) +
+  labs(linetype="\\llap{strain}") +
+  scale_y_continuous(name = "incidence", expand = c(0.02, 0), sec.axis = dup_axis(name = "effective\n\nsusceptibility", labels = NULL)) +
+  # scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
+  # scale_y_continuous(sec.axis = dup_axis(name = "susceptible", labels = NULL)) +
+  theme(axis.text.x = element_blank(), 
+        axis.ticks.x = element_blank(), 
+        axis.title.x = element_blank(),
+        axis.text = element_blank(),
+        legend.position = "top",
+        panel.grid.minor.y = element_blank(),
+        axis.text.y.right = element_text(color = "#7570B3"),
+        axis.title.y.right = element_text(color = "#7570B3"),
+        axis.title.y.left = element_text(color = "#E7298A"),
+        legend.title = element_text(colour="black", size=10, 
+                                      face="bold"),
+        legend.key.size=unit(2.5, "lines"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.spacing.x = unit(0, "mm"),
+        legend.spacing.y = unit(0, "mm")
+  )
+
+breaks <- c("intrinsic", "backward", "forward")
+
+main_plot <- ggplot() +
+  theme_minimal() +
+  event_markers(simulation$events) +
+  geom_line(data = subset(gfs.A_long, name == "intrinsic"),
+            aes(x=time, y=value, colour="intrinsic"), size=1, linetype="solid") +
+  geom_line(data = subset(gfs.B_long, name == "intrinsic"),
+            aes(x=time, y=value, colour="intrinsic", linetype="intrinsic"), size=1, linetype="88") +
+  geom_line(data = subset(gfs.A_long, name %in% c("backward", "forward")),
+            aes(x=time, y=value, colour=name), size=1, linetype="solid") +
+  geom_line(data = subset(gfs.B_long, name %in% c("backward", "forward")),
+            aes(x=time, y=value, colour=name, linetype=name), size=1, linetype="88") +
+  scale_colour_brewer_custom(breaks, "black") +
+  scale_x_continuous(expand = c(0.02, 0)) +
+  scale_y_continuous(expand = c(0.02, 0)) +
+  labs(y = "GI (days)", colour=element_blank(), element_blank(), x="\ntime") +
+  theme(legend.position = c(0.83, 0.15), axis.ticks.length.y = unit(-1, "cm"), axis.title.y = element_text(margin = margin(r = 10)))
+
+incidence_plot /
+  main_plot +
+  plot_layout(heights = c(0.7, 1.9))
 ```

@@ -6,13 +6,14 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-FIGURE_PATH <- "/Users/olliecheng/Dropbox (Maestral)/Apps/Overleaf/Modelling/figures/knitr/"
+FIGURE_PATH <- "/Users/olliecheng/Dropbox (Maestral)/Apps/Overleaf/Vacation Scholars Poster/figures/knitr/"
+options(tikzDefaultEngine='xetex')
 knitr::opts_chunk$set(fig.path = FIGURE_PATH,  # Save images to a subdirectory
                       echo = FALSE,  # Hide code for now
                       dpi = 300,  # High resolution PNGs
                       dev=c("tikz"),
                       dev.args = list(lwdUnit = 72.27/96),
-                      fig.width = 5.7,
+                      fig.width = 5.3,
                       external = FALSE)
 
 library(deSolve)
@@ -20,6 +21,7 @@ library(tidyr)
 library(ggthemes)
 library(patchwork)
 library(tikzDevice)
+library(RColorBrewer)
 
 source("solver.R")
 source("model.R")
@@ -108,31 +110,31 @@ gfs$backward <- sapply(gfs$time, g.b.mean)
 
 Graph these
 
-```{r 1s-intervention-gi, fig.height=4}
+```{r 1s-intervention-gi, fig.width=5.2, fig.height = 3.7}
+source("plots.R")
 gfs_long <- pivot_longer(gfs, cols = c("intrinsic", "forward", "backward"))
 
-incidence_plot <- ggplot(subset(simulation$overview, time %in% gfs_long$time), aes(x=time, y=incidence)) +
-  geom_line(aes(y=incidence)) +
-  geom_line(aes(y=S / scale), colour="seagreen", linetype="dashed") +
-  scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
-  theme(axis.text.x = element_blank(), 
-        axis.ticks.x = element_blank(), 
-        axis.title.x = element_blank(),
-        panel.grid.minor.y = element_blank(),
-        axis.text.y.right = element_text(color = "seagreen"),
-        axis.title.y.right = element_text(color = "seagreen")
-  )
+scale = max(simulation$overview$S) / max(simulation$overview$incidence)
 
+incidence_plot <- incidence_susceptible_plot(simulation, gfs$time)
+
+breaks <- c("intrinsic", "backward", "forward")
 main_plot <- ggplot(gfs_long) +
-  # geom_area(data = simulation$overview, aes(x=time, y = incidence / 300), alpha = 0.2) +
-  geom_line(size=0.9, aes(x=time, y=value, colour=name)) +
   event_markers(simulation$events) +
-  labs(y = "generation interval (days)") +
-  theme(legend.position = c(0.13, 0.85), legend.title = element_blank())
+  geom_line(data = subset(gfs_long, name == "intrinsic"),
+            aes(x=time, y=value, colour="intrinsic"), size=1) +
+  geom_line(data = subset(gfs_long, name %in% c("backward", "forward")),
+            aes(x=time, y=value, colour=name), size=1) +
+  scale_colour_brewer_custom(breaks, "black") +
+  scale_x_continuous(expand = c(0.02, 0)) +
+  scale_y_continuous(expand = c(0.02, 0)) +
+  scale_linetype_manual(breaks = breaks, values = c("dashed", "solid", "solid")) +
+  labs(y = "GI (days)", colour=element_blank(), linetype=element_blank()) +
+  theme(legend.position = c(0.83, 0.15), axis.ticks.length.y = unit(-1, "cm"), axis.title.y = element_text(margin = margin(r = 10)))
 
 incidence_plot /
   main_plot + 
-  plot_layout(heights = c(1, 2))
+  plot_layout(heights = c(0.7, 2))
 ```
 
 ```{r}

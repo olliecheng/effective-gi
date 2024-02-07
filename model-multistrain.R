@@ -80,7 +80,14 @@ simulate_two_seir <- function(initial_value, params, start, end) {
     colnames(params$events) <- c("var", "time", "value", "method")
   }
   
+  data$incidence.A1 <-                (params$A(0)$beta / parameters$N) * data$S.AB * (data$I.A1 + data$I.A2)
+  data$incidence.A2 <- parameters$x * (params$A(0)$beta / parameters$N) * data$S.A  * (data$I.A1 + data$I.A2)
+  data$incidence.B1 <-                (params$B(0)$beta / parameters$N) * data$S.AB * (data$I.B1 + data$I.B2)
+  data$incidence.B2 <- parameters$x * (params$B(0)$beta / parameters$N) * data$S.B  * (data$I.B1 + data$I.B2)
+  
   result <- generate_summary(data, params)
+  
+  
   return(result)
 }
 
@@ -103,41 +110,11 @@ generate_summary <- function(data, params) {
   result$params <- params
   result$events <- params$events
   
-  A_data <- calculate_incidence(data.frame(
-    time = data$time,
-    S = data$S.AB + data$S.A,
-    E = data$E.A1 + data$E.A2,
-    I = data$I.A1 + data$I.A2,
-    R = data$R.A + data$S.B + data$E.B2 + data$I.B2 + data$R.AB,
-    strain = "A"
-  ))
   
-  B_data <- calculate_incidence(data.frame(
-    time = data$time,
-    S = data$S.AB + data$S.B,
-    E = data$E.B1 + data$E.B2,
-    I = data$I.B1 + data$I.B2,
-    R = data$R.B + data$S.A + data$E.A2 + data$I.A2 + data$R.AB,
-    strain = "B"
-  ))
-  
-  overview <- rbind(A_data, B_data)
-  
-  strains <- list()
-  
-  for (s in c("A", "B")) {
-    strain <- list()
-    strain$overview <- overview[overview$strain == s,]
-    
-    # I create an anonymous function which returns an anonymous function
-    # but I call it with s, which captures the current value of s.
-    strain$params <- (function(s) {
-      \(t) c(params[[s]](t), events=params$events, N=params$N)
-    })(s)
-    
-    strain <- generate_approximations(strain)
-    
-    strains[[s]] = strain
+  for (v in names(result$data)) {
+    if (v != "time") {
+      result[[v]] <- approxfun(result$data$time, result$data[[v]], rule=2)
+    }
   }
   
   result$long_data <- pivot_longer(data, cols = c("S.AB", "S.A", "S.B",
@@ -156,8 +133,8 @@ generate_summary <- function(data, params) {
     }
   })
   
-  result$overview <- overview
-  result$strains <- strains
+  # result$overview <- overview
+  # result$strains <- strains
   
   return(result)
 }

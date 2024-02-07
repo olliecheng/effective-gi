@@ -207,7 +207,7 @@ plot_multiple_SEIR <- function(
 }
 
 event_markers <- function(events) {
-  geom_vline(data=events, aes(xintercept=time), alpha=0.3, linetype="dashed")
+  geom_vline(data=events, aes(xintercept=time), alpha=0.3, linetype="ff", size=1)
 }
 
 scale_colour_brewer_custom <- function(breaks, colours) {
@@ -217,14 +217,22 @@ scale_colour_brewer_custom <- function(breaks, colours) {
 incidence_susceptible_plot <- function(data, times) {
   ggplot(subset(data$overview, time %in% times), aes(x=time, y=incidence)) +
     event_markers(data$events) +
-    geom_line(aes(y=incidence)) +
-    geom_line(aes(y=S / scale), colour="seagreen", linetype="dashed") +
-    scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
+    geom_line(aes(y=incidence), color="#E7298A", size=1) +
+    geom_line(aes(y=S / scale), colour="#7570B3", size=1) +
+    scale_x_continuous(expand = c(0.02, 0)) +
+    scale_y_continuous(expand = c(0.02, 0), sec.axis = dup_axis(name = "susceptible", labels = NULL)) +
+    # scale_y_continuous(sec.axis = sec_axis(~.*scale, name = "susceptible")) +
+    # scale_y_continuous(sec.axis = dup_axis(name = "susceptible", labels = NULL)) +
     theme(axis.text.x = element_blank(), 
           axis.ticks.x = element_blank(), 
           axis.title.x = element_blank(),
+          axis.text = element_blank(),
           panel.grid.minor.y = element_blank(),
-          axis.text.y.right = element_text(color = "seagreen"),
-          axis.title.y.right = element_text(color = "seagreen")
+          axis.title.y.left = element_text(color="#E7298A"),
+          axis.text.y.right = element_text(color = "#7570B3"),
+          axis.title.y.right = element_text(color = "#7570B3"),
+          plot.margin = margin(t = 10, unit = "pt")
     )
 }
+
+colours <- list(back = "#1B9E77", fwd = "#D95F02", back.bg = "#bef4e4", fwd.bg = "#fed4b3", back.bg.faint = "#e9fbf6", fwd.bg.faint = "#fff1e6")
